@@ -6,10 +6,10 @@ import (
 	"github.com/ccfos/nightingale/v6/dscache"
 	"github.com/ccfos/nightingale/v6/dskit/types"
 	"github.com/ccfos/nightingale/v6/models"
+	"github.com/ccfos/nightingale/v6/pkg/ginx"
+	"github.com/ccfos/nightingale/v6/pkg/logx"
 
 	"github.com/gin-gonic/gin"
-	"github.com/toolkits/pkg/ginx"
-	"github.com/toolkits/pkg/logger"
 )
 
 func (rt *Router) ShowDatabases(c *gin.Context) {
@@ -18,7 +18,7 @@ func (rt *Router) ShowDatabases(c *gin.Context) {
 
 	plug, exists := dscache.DsCache.Get(f.Cate, f.DatasourceId)
 	if !exists {
-		logger.Warningf("cluster:%d not exists", f.DatasourceId)
+		logx.Warningf(c.Request.Context(), "cluster:%d not exists", f.DatasourceId)
 		ginx.Bomb(200, "cluster not exists")
 	}
 
@@ -48,7 +48,7 @@ func (rt *Router) ShowTables(c *gin.Context) {
 
 	plug, exists := dscache.DsCache.Get(f.Cate, f.DatasourceId)
 	if !exists {
-		logger.Warningf("cluster:%d not exists", f.DatasourceId)
+		logx.Warningf(c.Request.Context(), "cluster:%d not exists", f.DatasourceId)
 		ginx.Bomb(200, "cluster not exists")
 	}
 
@@ -60,8 +60,8 @@ func (rt *Router) ShowTables(c *gin.Context) {
 	}
 	switch plug.(type) {
 	case TableShower:
-		if len(f.Querys) > 0 {
-			database, ok := f.Querys[0].(string)
+		if len(f.Queries) > 0 {
+			database, ok := f.Queries[0].(string)
 			if ok {
 				tables, err = plug.(TableShower).ShowTables(c.Request.Context(), database)
 			}
@@ -78,7 +78,7 @@ func (rt *Router) DescribeTable(c *gin.Context) {
 
 	plug, exists := dscache.DsCache.Get(f.Cate, f.DatasourceId)
 	if !exists {
-		logger.Warningf("cluster:%d not exists", f.DatasourceId)
+		logx.Warningf(c.Request.Context(), "cluster:%d not exists", f.DatasourceId)
 		ginx.Bomb(200, "cluster not exists")
 	}
 	// 只接受一个入参
@@ -90,8 +90,8 @@ func (rt *Router) DescribeTable(c *gin.Context) {
 	switch plug.(type) {
 	case TableDescriber:
 		client := plug.(TableDescriber)
-		if len(f.Querys) > 0 {
-			columns, err = client.DescribeTable(c.Request.Context(), f.Querys[0])
+		if len(f.Queries) > 0 {
+			columns, err = client.DescribeTable(c.Request.Context(), f.Queries[0])
 		}
 	default:
 		ginx.Bomb(200, "datasource not exists")

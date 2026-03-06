@@ -33,7 +33,8 @@ const (
 	DORIS         = "doris"
 	OPENSEARCH    = "opensearch"
 
-	CLICKHOUSE = "ck"
+	CLICKHOUSE   = "ck"
+	VICTORIALOGS = "victorialogs"
 )
 
 const (
@@ -60,12 +61,12 @@ const (
 
 type AlertRule struct {
 	Id                    int64                  `json:"id" gorm:"primaryKey"`
-	GroupId               int64                  `json:"group_id"` // busi group id
-	Cate                  string                 `json:"cate"`     // alert rule cate (prometheus|elasticsearch)
-	DatasourceIds         string                 `json:"-" gorm:"datasource_ids"`
+	GroupId               int64                  `json:"group_id"`                                                               // busi group id
+	Cate                  string                 `json:"cate"`                                                                   // alert rule cate (prometheus|elasticsearch)
+	DatasourceIds         string                 `json:"-" gorm:"datasource_ids"`                                                // Deprecated: use DatasourceQueries instead
 	DatasourceIdsJson     []int64                `json:"datasource_ids,omitempty" gorm:"-"`                                      // alert rule list page use this field
 	DatasourceQueries     []DatasourceQuery      `json:"datasource_queries" gorm:"datasource_queries;type:text;serializer:json"` // datasource queries
-	Cluster               string                 `json:"cluster"`                                                                // take effect by clusters, seperated by space
+	Cluster               string                 `json:"cluster"`                                                                // Deprecated: use DatasourceQueries instead                                                           // take effect by clusters, separated by space
 	Name                  string                 `json:"name"`                                                                   // rule name
 	Note                  string                 `json:"note"`                                                                   // will sent in notify
 	Prod                  string                 `json:"prod"`                                                                   // product empty means n9e
@@ -76,33 +77,33 @@ type AlertRule struct {
 	Severity              int                    `json:"severity"`                                                               // 1: Emergency 2: Warning 3: Notice
 	Severities            []int                  `json:"severities" gorm:"-"`                                                    // 1: Emergency 2: Warning 3: Notice
 	Disabled              int                    `json:"disabled"`                                                               // 0: enabled, 1: disabled
-	PromForDuration       int                    `json:"prom_for_duration"`                                                      // prometheus for, unit:s
+	PromForDuration       int                    `json:"prom_for_duration"`                                                      // Deprecated: use cron pattern instead                                                     // prometheus for, unit:s
 	PromQl                string                 `json:"prom_ql"`                                                                // just one ql
 	RuleConfig            string                 `json:"-" gorm:"rule_config"`                                                   // rule config
 	RuleConfigJson        interface{}            `json:"rule_config" gorm:"-"`                                                   // rule config for fe
 	EventRelabelConfig    []*pconf.RelabelConfig `json:"event_relabel_config" gorm:"-"`                                          // event relabel config
 	PromEvalInterval      int                    `json:"prom_eval_interval"`                                                     // unit:s
-	EnableStime           string                 `json:"-"`                                                                      // split by space: "00:00 10:00 12:00"
-	EnableStimeJSON       string                 `json:"enable_stime" gorm:"-"`                                                  // for fe
+	EnableStime           string                 `json:"-"`                                                                      // Deprecated                                                                  // split by space: "00:00 10:00 12:00"
+	EnableStimeJSON       string                 `json:"enable_stime" gorm:"-"`                                                  // Deprecated                                               // for fe
 	EnableStimesJSON      []string               `json:"enable_stimes" gorm:"-"`                                                 // for fe
-	EnableEtime           string                 `json:"-"`                                                                      // split by space: "00:00 10:00 12:00"
-	EnableEtimeJSON       string                 `json:"enable_etime" gorm:"-"`                                                  // for fe
+	EnableEtime           string                 `json:"-"`                                                                      // Deprecated                                                                // split by space: "00:00 10:00 12:00"
+	EnableEtimeJSON       string                 `json:"enable_etime" gorm:"-"`                                                  // Deprecated                                             // for fe
 	EnableEtimesJSON      []string               `json:"enable_etimes" gorm:"-"`                                                 // for fe
-	EnableDaysOfWeek      string                 `json:"-"`                                                                      // eg: "0 1 2 3 4 5 6 ; 0 1 2"
-	EnableDaysOfWeekJSON  []string               `json:"enable_days_of_week" gorm:"-"`                                           // for fe
+	EnableDaysOfWeek      string                 `json:"-"`                                                                      // Deprecated                                                             // eg: "0 1 2 3 4 5 6 ; 0 1 2"
+	EnableDaysOfWeekJSON  []string               `json:"enable_days_of_week" gorm:"-"`                                           // Deprecated                                         // for fe
 	EnableDaysOfWeeksJSON [][]string             `json:"enable_days_of_weeks" gorm:"-"`                                          // for fe
 	EnableInBG            int                    `json:"enable_in_bg"`                                                           // 0: global 1: enable one busi-group
 	NotifyRecovered       int                    `json:"notify_recovered"`                                                       // whether notify when recovery
-	NotifyChannels        string                 `json:"-"`                                                                      // split by space: sms voice email dingtalk wecom
-	NotifyChannelsJSON    []string               `json:"notify_channels" gorm:"-"`                                               // for fe
-	NotifyGroups          string                 `json:"-"`                                                                      // split by space: 233 43
-	NotifyGroupsObj       []UserGroup            `json:"notify_groups_obj" gorm:"-"`                                             // for fe
-	NotifyGroupsJSON      []string               `json:"notify_groups" gorm:"-"`                                                 // for fe
+	NotifyChannels        string                 `json:"-"`                                                                      // Deprecated                                                        // split by space: sms voice email dingtalk wecom
+	NotifyChannelsJSON    []string               `json:"notify_channels" gorm:"-"`                                               // Deprecated                                            // for fe
+	NotifyGroups          string                 `json:"-"`                                                                      // Deprecated                                            // split by space: 233 43
+	NotifyGroupsObj       []UserGroup            `json:"notify_groups_obj" gorm:"-"`                                             // Deprecated                                         // for fe
+	NotifyGroupsJSON      []string               `json:"notify_groups" gorm:"-"`                                                 // Deprecated                                          // for fe
 	NotifyRepeatStep      int                    `json:"notify_repeat_step"`                                                     // notify repeat interval, unit: min
 	NotifyMaxNumber       int                    `json:"notify_max_number"`                                                      // notify: max number
 	RecoverDuration       int64                  `json:"recover_duration"`                                                       // unit: s
-	Callbacks             string                 `json:"-"`                                                                      // split by space: http://a.com/api/x http://a.com/api/y'
-	CallbacksJSON         []string               `json:"callbacks" gorm:"-"`                                                     // for fe
+	Callbacks             string                 `json:"-"`                                                                      // Deprecated                                                             // split by space: http://a.com/api/x http://a.com/api/y'
+	CallbacksJSON         []string               `json:"callbacks" gorm:"-"`                                                     // Deprecated                                                 // for fe
 	RunbookUrl            string                 `json:"runbook_url"`                                                            // sop url
 	AppendTags            string                 `json:"-"`                                                                      // split by space: service=n9e mod=api
 	AppendTagsJSON        []string               `json:"append_tags" gorm:"-"`                                                   // for fe
@@ -118,7 +119,9 @@ type AlertRule struct {
 	CurEventCount         int64                  `json:"cur_event_count" gorm:"-"`
 	UpdateByNickname      string                 `json:"update_by_nickname" gorm:"-"` // for fe
 	CronPattern           string                 `json:"cron_pattern"`
+	TimeZone              string                 `json:"time_zone" gorm:"default:''"` // timezone for alert rule, e.g. "Asia/Shanghai", "UTC", empty for default
 	NotifyRuleIds         []int64                `json:"notify_rule_ids" gorm:"serializer:json"`
+	PipelineConfigs       []PipelineConfig       `json:"pipeline_configs" gorm:"serializer:json"`
 	NotifyVersion         int                    `json:"notify_version"` // 0: old, 1: new
 }
 
@@ -380,8 +383,7 @@ func GetHostsQuery(queries []HostQuery) []map[string]interface{} {
 			if q.Op == "==" {
 				m["target_busi_group.group_id in (?)"] = ids
 			} else {
-				m["target.ident not in (select target_ident "+
-					"from target_busi_group where group_id in (?))"] = ids
+				m["NOT EXISTS (SELECT 1 FROM target_busi_group tbg WHERE tbg.target_ident = target.ident AND tbg.group_id IN (?))"] = ids
 			}
 		case "tags":
 			lst := []string{}
@@ -481,6 +483,13 @@ func (ar *AlertRule) Verify() error {
 		return errors.New("name is blank")
 	}
 
+	if ar.TimeZone != "" {
+		_, err := time.LoadLocation(ar.TimeZone)
+		if err != nil {
+			return fmt.Errorf("invalid timezone: %s", ar.TimeZone)
+		}
+	}
+
 	if str.Dangerous(ar.Name) {
 		return errors.New("Name has invalid characters")
 	}
@@ -508,10 +517,16 @@ func (ar *AlertRule) Verify() error {
 
 	ar.AppendTags = strings.TrimSpace(ar.AppendTags)
 	arr := strings.Fields(ar.AppendTags)
+	appendTagKeys := make(map[string]struct{})
 	for i := 0; i < len(arr); i++ {
 		if !strings.Contains(arr[i], "=") {
 			return fmt.Errorf("AppendTags(%s) invalid", arr[i])
 		}
+		pair := strings.SplitN(arr[i], "=", 2)
+		if _, exists := appendTagKeys[pair[0]]; exists {
+			return fmt.Errorf("AppendTags has duplicate key: %s", pair[0])
+		}
+		appendTagKeys[pair[0]] = struct{}{}
 	}
 
 	gids := strings.Fields(ar.NotifyGroups)
@@ -987,6 +1002,8 @@ func (ar *AlertRule) DB2FE() error {
 		return err
 	}
 
+	ar.FillSeverities()
+
 	return nil
 }
 
@@ -1217,7 +1234,8 @@ func (ar *AlertRule) IsInnerRule() bool {
 		ar.Cate == MYSQL ||
 		ar.Cate == POSTGRESQL ||
 		ar.Cate == DORIS ||
-		ar.Cate == OPENSEARCH
+		ar.Cate == OPENSEARCH ||
+		ar.Cate == VICTORIALOGS
 }
 
 func (ar *AlertRule) GetRuleType() string {

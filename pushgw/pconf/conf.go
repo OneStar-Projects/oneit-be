@@ -18,9 +18,10 @@ type Pushgw struct {
 	UpdateTargetRetryIntervalMills int64
 	UpdateTargetTimeoutMills       int64
 	UpdateTargetBatchSize          int
-	UpdateDBTargetConcurrency      int
 	PushConcurrency                int
+	UpdateTargetByUrlConcurrency   int
 
+	GetHeartbeatFromMetric bool // 是否从时序数据中提取机器心跳时间，默认 false
 	BusiGroupLabelKey   string
 	IdentMetrics        []string
 	IdentStatsThreshold int
@@ -51,6 +52,7 @@ type WriterOptions struct {
 	Url           string
 	BasicAuthUser string
 	BasicAuthPass string
+	AsyncWrite    bool // 如果有多个转发 writer，对应不重要的 writer，可以设置为 true，异步转发提供转发效率
 
 	Timeout               int64
 	DialTimeout           int64
@@ -126,12 +128,12 @@ func (p *Pushgw) PreCheck() {
 		p.UpdateTargetBatchSize = 20
 	}
 
-	if p.UpdateDBTargetConcurrency <= 0 {
-		p.UpdateDBTargetConcurrency = 16
-	}
-
 	if p.PushConcurrency <= 0 {
 		p.PushConcurrency = 16
+	}
+
+	if p.UpdateTargetByUrlConcurrency <= 0 {
+		p.UpdateTargetByUrlConcurrency = 10
 	}
 
 	if p.BusiGroupLabelKey == "" {

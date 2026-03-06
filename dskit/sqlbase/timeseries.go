@@ -79,10 +79,11 @@ func FormatMetricValues(keys types.Keys, rows []map[string]interface{}, ignoreDe
 	}
 
 	if keys.TimeKey == "" {
-		keys.TimeKey = "time"
-	}
-
-	if len(keys.TimeKey) > 0 {
+		// 默认支持 __time__ 和 time 作为时间字段
+		// 用户可以使用 as __time__ 来避免与表中已有的 time 字段冲突
+		keyMap["__time__"] = "time"
+		keyMap["time"] = "time"
+	} else {
 		keyMap[keys.TimeKey] = "time"
 	}
 
@@ -142,9 +143,25 @@ func FormatMetricValues(keys types.Keys, rows []map[string]interface{}, ignoreDe
 			labelsStrHash := fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(labelsStr, ","))))
 
 			// Append new values to the existing metric, if present
-			ts, exists := metricTs[keys.TimeKey]
+			var ts float64
+			var exists bool
+
+			if keys.TimeKey == "" {
+				// 没有配置 timeKey，按优先级查找：__time__ > time
+				ts, exists = metricTs["__time__"]
+				if !exists {
+					ts, exists = metricTs["time"]
+				}
+			} else {
+				// 用户配置了 timeKey，使用用户配置的
+				ts, exists = metricTs[keys.TimeKey]
+			}
+
 			if !exists {
-				ts = float64(time.Now().Unix()) // Default to current time if not specified
+				// Default to current time if not specified
+				// 大多数情况下offset为空
+				// 对于记录规则延迟计算的情况，统计值的时间戳需要有偏移，以便跟统计值对应
+				ts = float64(time.Now().Unix()) - float64(keys.Offset)
 			}
 
 			valuePair := []float64{ts, value}
@@ -241,6 +258,14 @@ func parseTimeFromString(str, format string) (time.Time, error) {
 
 	// Try to parse the string as RFC3339, RFC3339Nano, or Unix timestamp
 	if parsedTime, err := time.Parse(time.RFC3339, str); err == nil {
+		return parsedTime, nil
+	}
+
+	if parsedTime, err := time.Parse(time.DateTime, str); err == nil {
+		return parsedTime, nil
+	}
+
+	if parsedTime, err := time.Parse("2006-01-02 15:04:05.000000", str); err == nil {
 		return parsedTime, nil
 	}
 	if parsedTime, err := time.Parse(time.RFC3339Nano, str); err == nil {

@@ -4,15 +4,18 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ccfos/nightingale/v6/datasource"
 	"github.com/ccfos/nightingale/v6/dskit/doris"
 	"github.com/ccfos/nightingale/v6/dskit/types"
-	"github.com/ccfos/nightingale/v6/pkg/macros"
 	"github.com/ccfos/nightingale/v6/models"
+	"github.com/ccfos/nightingale/v6/pkg/macros"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/toolkits/pkg/logger"
+
+	"github.com/ccfos/nightingale/v6/pkg/logx"
 )
 
 const (
@@ -38,6 +41,8 @@ type QueryParam struct {
 	To         int64           `json:"to" mapstructure:"to"`
 	TimeField  string          `json:"time_field" mapstructure:"time_field"`
 	TimeFormat string          `json:"time_format" mapstructure:"time_format"`
+	Interval   int64           `json:"interval" mapstructure:"interval"` // 查询时间间隔（秒）
+	Offset     int             `json:"offset" mapstructure:"offset"`     // 延迟计算，不在使用通用配置delay
 }
 
 func (d *Doris) InitClient() error {
@@ -76,52 +81,19 @@ func (d *Doris) Equal(p datasource.Datasource) bool {
 		return false
 	}
 
-	// only compare first shard
-	if d.Addr != newest.Addr {
-		return false
-	}
-
-	if d.User != newest.User {
-		return false
-	}
-
-	if d.Password != newest.Password {
-		return false
-	}
-
-	if d.EnableWrite != newest.EnableWrite {
-		return false
-	}
-
-	if d.FeAddr != newest.FeAddr {
-		return false
-	}
-
-	if d.MaxQueryRows != newest.MaxQueryRows {
-		return false
-	}
-
-	if d.Timeout != newest.Timeout {
-		return false
-	}
-
-	if d.MaxIdleConns != newest.MaxIdleConns {
-		return false
-	}
-
-	if d.MaxOpenConns != newest.MaxOpenConns {
-		return false
-	}
-
-	if d.ConnMaxLifetime != newest.ConnMaxLifetime {
-		return false
-	}
-
-	if d.ClusterName != newest.ClusterName {
-		return false
-	}
-
-	return true
+	return d.Addr == newest.Addr &&
+		d.FeAddr == newest.FeAddr &&
+		d.User == newest.User &&
+		d.Password == newest.Password &&
+		d.EnableWrite == newest.EnableWrite &&
+		d.UserWrite == newest.UserWrite &&
+		d.PasswordWrite == newest.PasswordWrite &&
+		d.MaxQueryRows == newest.MaxQueryRows &&
+		d.Timeout == newest.Timeout &&
+		d.MaxIdleConns == newest.MaxIdleConns &&
+		d.MaxOpenConns == newest.MaxOpenConns &&
+		d.ConnMaxLifetime == newest.ConnMaxLifetime &&
+		d.ClusterName == newest.ClusterName
 }
 
 func (d *Doris) MakeLogQuery(ctx context.Context, query interface{}, eventTags []string, start, end int64) (interface{}, error) {
@@ -146,17 +118,50 @@ func (d *Doris) QueryData(ctx context.Context, query interface{}) ([]models.Data
 		return nil, fmt.Errorf("valueKey is required")
 	}
 
-	items, err := d.QueryTimeseries(context.TODO(), &doris.QueryParam{
+	// 设置默认 interval
+	if dorisQueryParam.Interval == 0 {
+		dorisQueryParam.Interval = 60
+	}
+
+	// 计算时间范围
+	now := time.Now().Unix()
+	var start, end int64
+	if dorisQueryParam.To != 0 && dorisQueryParam.From != 0 {
+		end = dorisQueryParam.To
+		start = dorisQueryParam.From
+	} else {
+		end = now
+		start = end - dorisQueryParam.Interval
+	}
+
+	if dorisQueryParam.Offset != 0 {
+		end -= int64(dorisQueryParam.Offset)
+		start -= int64(dorisQueryParam.Offset)
+	}
+
+	dorisQueryParam.From = start
+	dorisQueryParam.To = end
+
+	if strings.Contains(dorisQueryParam.SQL, "$__") {
+		var err error
+		dorisQueryParam.SQL, err = macros.Macro(dorisQueryParam.SQL, dorisQueryParam.From, dorisQueryParam.To)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	items, err := d.QueryTimeseries(ctx, &doris.QueryParam{
 		Database: dorisQueryParam.Database,
 		Sql:      dorisQueryParam.SQL,
 		Keys: types.Keys{
 			ValueKey: dorisQueryParam.Keys.ValueKey,
 			LabelKey: dorisQueryParam.Keys.LabelKey,
 			TimeKey:  dorisQueryParam.Keys.TimeKey,
+			Offset:   dorisQueryParam.Offset,
 		},
 	})
 	if err != nil {
-		logger.Warningf("query:%+v get data err:%v", dorisQueryParam, err)
+		logx.Warningf(ctx, "query:%+v get data err:%v", dorisQueryParam, err)
 		return []models.DataResp{}, err
 	}
 	data := make([]models.DataResp, 0)
@@ -169,7 +174,7 @@ func (d *Doris) QueryData(ctx context.Context, query interface{}) ([]models.Data
 	}
 
 	// parse resp to time series data
-	logger.Infof("req:%+v keys:%+v \n data:%v", dorisQueryParam, dorisQueryParam.Keys, data)
+	logx.Infof(ctx, "req:%+v keys:%+v \n data:%v", dorisQueryParam, dorisQueryParam.Keys, data)
 
 	return data, nil
 }
@@ -178,6 +183,18 @@ func (d *Doris) QueryLog(ctx context.Context, query interface{}) ([]interface{},
 	dorisQueryParam := new(QueryParam)
 	if err := mapstructure.Decode(query, dorisQueryParam); err != nil {
 		return nil, 0, err
+	}
+
+	// 记录规则预览场景下，只传了interval, 没有传From和To
+	now := time.Now().Unix()
+	if dorisQueryParam.To == 0 && dorisQueryParam.From == 0 && dorisQueryParam.Interval != 0 {
+		dorisQueryParam.To = now
+		dorisQueryParam.From = now - dorisQueryParam.Interval
+	}
+
+	if dorisQueryParam.Offset != 0 {
+		dorisQueryParam.To -= int64(dorisQueryParam.Offset)
+		dorisQueryParam.From -= int64(dorisQueryParam.Offset)
 	}
 
 	if strings.Contains(dorisQueryParam.SQL, "$__") {
@@ -193,7 +210,7 @@ func (d *Doris) QueryLog(ctx context.Context, query interface{}) ([]interface{},
 		Sql:      dorisQueryParam.SQL,
 	})
 	if err != nil {
-		logger.Warningf("query:%+v get data err:%v", dorisQueryParam, err)
+		logx.Warningf(ctx, "query:%+v get data err:%v", dorisQueryParam, err)
 		return []interface{}{}, 0, err
 	}
 	logs := make([]interface{}, 0)

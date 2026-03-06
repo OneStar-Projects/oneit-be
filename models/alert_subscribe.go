@@ -22,7 +22,7 @@ type AlertSubscribe struct {
 	Cate              string       `json:"cate"`
 	DatasourceIds     string       `json:"-" gorm:"datasource_ids"` // datasource ids
 	DatasourceIdsJson []int64      `json:"datasource_ids" gorm:"-"` // for fe
-	Cluster           string       `json:"cluster"`                 // take effect by clusters, seperated by space
+	Cluster           string       `json:"cluster"`                 // take effect by clusters, separated by space
 	RuleId            int64        `json:"rule_id"`
 	Severities        string       `json:"-" gorm:"severities"` // sub severity
 	SeveritiesJson    []int        `json:"severities" gorm:"-"` // for fe
@@ -45,6 +45,7 @@ type AlertSubscribe struct {
 	CreateAt          int64        `json:"create_at"`
 	UpdateBy          string       `json:"update_by"`
 	UpdateAt          int64        `json:"update_at"`
+	UpdateByNickname  string       `json:"update_by_nickname" gorm:"-"`
 	ITags             []TagFilter  `json:"-" gorm:"-"` // inner tags
 	BusiGroups        ormx.JSONArr `json:"busi_groups"`
 	IBusiGroups       []TagFilter  `json:"-" gorm:"-"` // inner busiGroups

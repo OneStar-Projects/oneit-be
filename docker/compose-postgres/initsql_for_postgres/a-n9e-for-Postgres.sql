@@ -209,6 +209,7 @@ CREATE TABLE board (
     create_by varchar(64) not null default '',
     update_at bigint not null default 0,
     update_by varchar(64) not null default '',
+    note varchar(1024) not null default '',
     PRIMARY KEY (id),
     UNIQUE (group_id, name)
 ) ;
@@ -219,6 +220,7 @@ COMMENT ON COLUMN board.public IS '0:false 1:true';
 COMMENT ON COLUMN board.built_in IS '0:false 1:true';
 COMMENT ON COLUMN board.hide IS '0:false 1:true';
 COMMENT ON COLUMN board.public_cate IS '0 anonymous 1 login 2 busi';
+COMMENT ON COLUMN board.note IS 'note';
 
 
 -- for dashboard new version
@@ -319,6 +321,7 @@ CREATE TABLE alert_rule (
     create_by varchar(64) not null default '',
     update_at bigint not null default 0,
     update_by varchar(64) not null default '',
+    time_zone varchar(64) not null default '',
     PRIMARY KEY (id)
 ) ;
 CREATE INDEX alert_rule_group_id_idx ON alert_rule (group_id);
@@ -736,6 +739,7 @@ CREATE TABLE datasource
     http varchar(4096) not null default '',
     auth varchar(8192) not null default '',
     is_default boolean not null default false,
+    weight int not null default 0,
     created_at bigint not null default 0,
     created_by varchar(64) not null default '',
     updated_at bigint not null default 0,
@@ -802,6 +806,9 @@ CREATE TABLE builtin_metrics (
   lang varchar(191) NOT NULL DEFAULT '',
   note varchar(4096) NOT NULL,
   expression varchar(4096) NOT NULL,
+  expression_type varchar(32) NOT NULL DEFAULT 'promql',
+  metric_type varchar(191) NOT NULL DEFAULT '',
+  extra_fields text,
   created_at bigint NOT NULL DEFAULT 0,
   created_by varchar(191) NOT NULL DEFAULT '',
   updated_at bigint NOT NULL DEFAULT 0,
@@ -824,6 +831,9 @@ COMMENT ON COLUMN builtin_metrics.unit IS 'unit of metric';
 COMMENT ON COLUMN builtin_metrics.lang IS 'language of metric';
 COMMENT ON COLUMN builtin_metrics.note IS 'description of metric in Chinese';
 COMMENT ON COLUMN builtin_metrics.expression IS 'expression of metric';
+COMMENT ON COLUMN builtin_metrics.expression_type IS 'expression type: metric_name or promql';
+COMMENT ON COLUMN builtin_metrics.metric_type IS 'metric type like counter/gauge';
+COMMENT ON COLUMN builtin_metrics.extra_fields IS 'custom extra fields';
 COMMENT ON COLUMN builtin_metrics.created_at IS 'create time';
 COMMENT ON COLUMN builtin_metrics.created_by IS 'creator';
 COMMENT ON COLUMN builtin_metrics.updated_at IS 'update time';
@@ -873,6 +883,7 @@ CREATE TABLE builtin_payloads (
   name VARCHAR(191) NOT NULL,
   tags VARCHAR(191) NOT NULL DEFAULT '',
   content TEXT NOT NULL,
+  note VARCHAR(1024) NOT NULL DEFAULT '',
   created_at BIGINT NOT NULL DEFAULT 0,
   created_by VARCHAR(191) NOT NULL DEFAULT '',
   updated_at BIGINT NOT NULL DEFAULT 0,

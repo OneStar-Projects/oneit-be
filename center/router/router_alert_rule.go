@@ -13,6 +13,7 @@ import (
 
 	"github.com/ccfos/nightingale/v6/alert/mute"
 	"github.com/ccfos/nightingale/v6/models"
+	"github.com/ccfos/nightingale/v6/pkg/ginx"
 	"github.com/ccfos/nightingale/v6/pkg/strx"
 	"github.com/ccfos/nightingale/v6/pushgw/pconf"
 	"github.com/ccfos/nightingale/v6/pushgw/writer"
@@ -21,7 +22,6 @@ import (
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/toolkits/pkg/ginx"
 	"github.com/toolkits/pkg/i18n"
 )
 
@@ -35,13 +35,13 @@ func (rt *Router) alertRuleGets(c *gin.Context) {
 		cache := make(map[int64]*models.UserGroup)
 		for i := 0; i < len(ars); i++ {
 			ars[i].FillNotifyGroups(rt.Ctx, cache)
-			ars[i].FillSeverities()
 		}
+		models.FillUpdateByNicknames(rt.Ctx, ars)
 	}
 	ginx.NewRender(c).Data(ars, err)
 }
 
-func getAlertCueEventTimeRange(c *gin.Context) (stime, etime int64) {
+func GetAlertCueEventTimeRange(c *gin.Context) (stime, etime int64) {
 	stime = ginx.QueryInt64(c, "stime", 0)
 	etime = ginx.QueryInt64(c, "etime", 0)
 	if etime == 0 {
@@ -77,20 +77,17 @@ func (rt *Router) alertRuleGetsByGids(c *gin.Context) {
 	if err == nil {
 		cache := make(map[int64]*models.UserGroup)
 		rids := make([]int64, 0, len(ars))
-		names := make([]string, 0, len(ars))
 		for i := 0; i < len(ars); i++ {
 			ars[i].FillNotifyGroups(rt.Ctx, cache)
-			ars[i].FillSeverities()
 
 			if len(ars[i].DatasourceQueries) != 0 {
 				ars[i].DatasourceIdsJson = rt.DatasourceCache.GetIDsByDsCateAndQueries(ars[i].Cate, ars[i].DatasourceQueries)
 			}
 
 			rids = append(rids, ars[i].Id)
-			names = append(names, ars[i].UpdateBy)
 		}
 
-		stime, etime := getAlertCueEventTimeRange(c)
+		stime, etime := GetAlertCueEventTimeRange(c)
 		cnt := models.AlertCurEventCountByRuleId(rt.Ctx, rids, stime, etime)
 		if cnt != nil {
 			for i := 0; i < len(ars); i++ {
@@ -98,14 +95,7 @@ func (rt *Router) alertRuleGetsByGids(c *gin.Context) {
 			}
 		}
 
-		users := models.UserMapGet(rt.Ctx, "username in (?)", names)
-		if users != nil {
-			for i := 0; i < len(ars); i++ {
-				if user, exist := users[ars[i].UpdateBy]; exist {
-					ars[i].UpdateByNickname = user.Nickname
-				}
-			}
-		}
+		models.FillUpdateByNicknames(rt.Ctx, ars)
 	}
 	ginx.NewRender(c).Data(ars, err)
 }
@@ -137,6 +127,7 @@ func (rt *Router) alertRulesGetByService(c *gin.Context) {
 				ars[i].DatasourceIdsJson = rt.DatasourceCache.GetIDsByDsCateAndQueries(ars[i].Cate, ars[i].DatasourceQueries)
 			}
 		}
+		models.FillUpdateByNicknames(rt.Ctx, ars)
 	}
 	ginx.NewRender(c).Data(ars, err)
 }
@@ -290,6 +281,15 @@ func (rt *Router) alertRuleAddByImport(c *gin.Context) {
 				models.DataSourceQueryAll,
 			}
 		}
+
+		// 将导入的规则统一转为新版本的通知规则配置
+		lst[i].NotifyVersion = 1
+		lst[i].NotifyChannelsJSON = []string{}
+		lst[i].NotifyGroupsJSON = []string{}
+		lst[i].NotifyChannels = ""
+		lst[i].NotifyGroups = ""
+		lst[i].Callbacks = ""
+		lst[i].CallbacksJSON = []string{}
 	}
 
 	bgid := ginx.UrlParamInt64(c, "id")
@@ -881,4 +881,29 @@ func (rt *Router) batchAlertRuleClone(c *gin.Context) {
 	}
 
 	ginx.NewRender(c).Data(reterr, nil)
+}
+
+func (rt *Router) timezonesGet(c *gin.Context) {
+	// 返回常用时区列表（按时差去重，每个时差只保留一个代表性时区）
+	timezones := []string{
+		"Local",
+		"UTC",
+		"Asia/Shanghai",       // UTC+8 (代表 Asia/Hong_Kong, Asia/Singapore 等)
+		"Asia/Tokyo",          // UTC+9 (代表 Asia/Seoul 等)
+		"Asia/Dubai",          // UTC+4
+		"Asia/Kolkata",        // UTC+5:30
+		"Asia/Bangkok",        // UTC+7 (代表 Asia/Jakarta 等)
+		"Europe/London",       // UTC+0 (代表 UTC)
+		"Europe/Paris",        // UTC+1 (代表 Europe/Berlin, Europe/Rome, Europe/Madrid 等)
+		"Europe/Moscow",       // UTC+3
+		"America/New_York",    // UTC-5 (代表 America/Toronto 等)
+		"America/Chicago",     // UTC-6 (代表 America/Mexico_City 等)
+		"America/Denver",      // UTC-7
+		"America/Los_Angeles", // UTC-8
+		"America/Sao_Paulo",   // UTC-3
+		"Australia/Sydney",    // UTC+10 (代表 Australia/Melbourne 等)
+		"Pacific/Auckland",    // UTC+12
+	}
+
+	ginx.NewRender(c).Data(timezones, nil)
 }

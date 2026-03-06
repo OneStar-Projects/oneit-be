@@ -5,14 +5,17 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/ccfos/nightingale/v6/alert/eval"
 	"github.com/ccfos/nightingale/v6/dscache"
 	"github.com/ccfos/nightingale/v6/models"
+	"github.com/ccfos/nightingale/v6/pkg/logx"
+	"github.com/ccfos/nightingale/v6/pkg/ginx"
 	"github.com/gin-gonic/gin"
-	"github.com/toolkits/pkg/ginx"
-	"github.com/toolkits/pkg/logger"
 )
 
-func CheckDsPerm(c *gin.Context, dsId int64, cate string, q interface{}) bool {
+type CheckDsPermFunc func(c *gin.Context, dsId int64, cate string, q interface{}) bool
+
+var CheckDsPerm CheckDsPermFunc = func(c *gin.Context, dsId int64, cate string, q interface{}) bool {
 	// todo: 后续需要根据 cate 判断是否需要权限
 	return true
 }
@@ -44,6 +47,7 @@ func QueryLogBatchConcurrently(anonymousAccess bool, ctx *gin.Context, f QueryFr
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var errs []error
+	rctx := ctx.Request.Context()
 
 	for _, q := range f.Queries {
 		if !anonymousAccess && !CheckDsPerm(ctx, q.Did, q.DsCate, q) {
@@ -52,20 +56,27 @@ func QueryLogBatchConcurrently(anonymousAccess bool, ctx *gin.Context, f QueryFr
 
 		plug, exists := dscache.DsCache.Get(q.DsCate, q.Did)
 		if !exists {
-			logger.Warningf("cluster:%d not exists query:%+v", q.Did, q)
+			logx.Warningf(rctx, "cluster:%d not exists query:%+v", q.Did, q)
 			return LogResp{}, fmt.Errorf("cluster not exists")
+		}
+
+		// 根据数据源类型对 Query 进行模板渲染处理
+		err := eval.ExecuteQueryTemplate(q.DsCate, q.Query, nil)
+		if err != nil {
+			logx.Warningf(rctx, "query template execute error: %v", err)
+			return LogResp{}, fmt.Errorf("query template execute error: %v", err)
 		}
 
 		wg.Add(1)
 		go func(query Query) {
 			defer wg.Done()
 
-			data, total, err := plug.QueryLog(ctx.Request.Context(), query.Query)
+			data, total, err := plug.QueryLog(rctx, query.Query)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
 				errMsg := fmt.Sprintf("query data error: %v query:%v\n ", err, query)
-				logger.Warningf(errMsg)
+				logx.Warningf(rctx, "%s", errMsg)
 				errs = append(errs, err)
 				return
 			}
@@ -111,15 +122,16 @@ func QueryDataConcurrently(anonymousAccess bool, ctx *gin.Context, f models.Quer
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var errs []error
+	rctx := ctx.Request.Context()
 
-	for _, q := range f.Querys {
+	for _, q := range f.Queries {
 		if !anonymousAccess && !CheckDsPerm(ctx, f.DatasourceId, f.Cate, q) {
 			return nil, fmt.Errorf("forbidden")
 		}
 
 		plug, exists := dscache.DsCache.Get(f.Cate, f.DatasourceId)
 		if !exists {
-			logger.Warningf("cluster:%d not exists", f.DatasourceId)
+			logx.Warningf(rctx, "cluster:%d not exists", f.DatasourceId)
 			return nil, fmt.Errorf("cluster not exists")
 		}
 
@@ -127,18 +139,18 @@ func QueryDataConcurrently(anonymousAccess bool, ctx *gin.Context, f models.Quer
 		go func(query interface{}) {
 			defer wg.Done()
 
-			datas, err := plug.QueryData(ctx.Request.Context(), query)
+			data, err := plug.QueryData(rctx, query)
 			if err != nil {
-				logger.Warningf("query data error: req:%+v err:%v", query, err)
+				logx.Warningf(rctx, "query data error: req:%+v err:%v", query, err)
 				mu.Lock()
 				errs = append(errs, err)
 				mu.Unlock()
 				return
 			}
 
-			logger.Debugf("query data: req:%+v resp:%+v", query, datas)
+			logx.Debugf(rctx, "query data: req:%+v resp:%+v", query, data)
 			mu.Lock()
-			resp = append(resp, datas...)
+			resp = append(resp, data...)
 			mu.Unlock()
 		}(q)
 	}
@@ -182,15 +194,16 @@ func QueryLogConcurrently(anonymousAccess bool, ctx *gin.Context, f models.Query
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var errs []error
+	rctx := ctx.Request.Context()
 
-	for _, q := range f.Querys {
+	for _, q := range f.Queries {
 		if !anonymousAccess && !CheckDsPerm(ctx, f.DatasourceId, f.Cate, q) {
 			return LogResp{}, fmt.Errorf("forbidden")
 		}
 
 		plug, exists := dscache.DsCache.Get(f.Cate, f.DatasourceId)
 		if !exists {
-			logger.Warningf("cluster:%d not exists query:%+v", f.DatasourceId, f)
+			logx.Warningf(rctx, "cluster:%d not exists query:%+v", f.DatasourceId, f)
 			return LogResp{}, fmt.Errorf("cluster not exists")
 		}
 
@@ -198,11 +211,11 @@ func QueryLogConcurrently(anonymousAccess bool, ctx *gin.Context, f models.Query
 		go func(query interface{}) {
 			defer wg.Done()
 
-			data, total, err := plug.QueryLog(ctx.Request.Context(), query)
-			logger.Debugf("query log: req:%+v resp:%+v", query, data)
+			data, total, err := plug.QueryLog(rctx, query)
+			logx.Debugf(rctx, "query log: req:%+v resp:%+v", query, data)
 			if err != nil {
 				errMsg := fmt.Sprintf("query data error: %v query:%v\n ", err, query)
-				logger.Warningf(errMsg)
+				logx.Warningf(rctx, "%s", errMsg)
 				mu.Lock()
 				errs = append(errs, err)
 				mu.Unlock()
@@ -240,22 +253,23 @@ func (rt *Router) QueryLogV2(c *gin.Context) {
 func (rt *Router) QueryLog(c *gin.Context) {
 	var f models.QueryParam
 	ginx.BindJSON(c, &f)
+	rctx := c.Request.Context()
 
 	var resp []interface{}
-	for _, q := range f.Querys {
+	for _, q := range f.Queries {
 		if !rt.Center.AnonymousAccess.PromQuerier && !CheckDsPerm(c, f.DatasourceId, f.Cate, q) {
 			ginx.Bomb(200, "forbidden")
 		}
 
 		plug, exists := dscache.DsCache.Get("elasticsearch", f.DatasourceId)
 		if !exists {
-			logger.Warningf("cluster:%d not exists", f.DatasourceId)
+			logx.Warningf(rctx, "cluster:%d not exists", f.DatasourceId)
 			ginx.Bomb(200, "cluster not exists")
 		}
 
-		data, _, err := plug.QueryLog(c.Request.Context(), q)
+		data, _, err := plug.QueryLog(rctx, q)
 		if err != nil {
-			logger.Warningf("query data error: %v", err)
+			logx.Warningf(rctx, "query data error: %v", err)
 			ginx.Bomb(200, "err:%v", err)
 			continue
 		}

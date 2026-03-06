@@ -1,6 +1,7 @@
 package sso
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -10,6 +11,8 @@ import (
 	"github.com/ccfos/nightingale/v6/models"
 	"github.com/ccfos/nightingale/v6/pkg/cas"
 	"github.com/ccfos/nightingale/v6/pkg/ctx"
+	"github.com/ccfos/nightingale/v6/pkg/dingtalk"
+	"github.com/ccfos/nightingale/v6/pkg/feishu"
 	"github.com/ccfos/nightingale/v6/pkg/ldapx"
 	"github.com/ccfos/nightingale/v6/pkg/oauth2x"
 	"github.com/ccfos/nightingale/v6/pkg/oidcx"
@@ -24,6 +27,8 @@ type SsoClient struct {
 	LDAP                 *ldapx.SsoClient
 	CAS                  *cas.SsoClient
 	OAuth2               *oauth2x.SsoClient
+	DingTalk             *dingtalk.SsoClient
+	FeiShu               *feishu.SsoClient
 	LastUpdateTime       int64
 	configCache          *memsto.ConfigCache
 	configLastUpdateTime int64
@@ -193,6 +198,20 @@ func Init(center cconf.Center, ctx *ctx.Context, configCache *memsto.ConfigCache
 				log.Fatalln("init oauth2 failed:", err)
 			}
 			ssoClient.OAuth2 = oauth2x.New(config)
+		case dingtalk.SsoTypeName:
+			var config dingtalk.Config
+			err := json.Unmarshal([]byte(cfg.Content), &config)
+			if err != nil {
+				log.Fatalf("init %s failed: %s", dingtalk.SsoTypeName, err)
+			}
+			ssoClient.DingTalk = dingtalk.New(config)
+		case feishu.SsoTypeName:
+			var config feishu.Config
+			err := json.Unmarshal([]byte(cfg.Content), &config)
+			if err != nil {
+				log.Fatalf("init %s failed: %s", feishu.SsoTypeName, err)
+			}
+			ssoClient.FeiShu = feishu.New(config)
 		}
 	}
 
@@ -218,7 +237,9 @@ func (s *SsoClient) reload(ctx *ctx.Context) error {
 		return err
 	}
 	userVariableMap := s.configCache.Get()
+	ssoConfigMap := make(map[string]models.SsoConfig, 0)
 	for _, cfg := range configs {
+		ssoConfigMap[cfg.Name] = cfg
 		cfg.Content = tplx.ReplaceTemplateUseText(cfg.Name, cfg.Content, userVariableMap)
 		switch cfg.Name {
 		case "LDAP":
@@ -259,7 +280,40 @@ func (s *SsoClient) reload(ctx *ctx.Context) error {
 				continue
 			}
 			s.OAuth2.Reload(config)
+
 		}
+	}
+
+	if dingTalkConfig, ok := ssoConfigMap[dingtalk.SsoTypeName]; ok {
+		var config dingtalk.Config
+		err := json.Unmarshal([]byte(dingTalkConfig.Content), &config)
+		if err != nil {
+			logger.Warningf("reload %s failed: %s", dingtalk.SsoTypeName, err)
+		} else {
+			if s.DingTalk != nil {
+				s.DingTalk.Reload(config)
+			} else {
+				s.DingTalk = dingtalk.New(config)
+			}
+		}
+	} else {
+		s.DingTalk = nil
+	}
+
+	if feiShuConfig, ok := ssoConfigMap[feishu.SsoTypeName]; ok {
+		var config feishu.Config
+		err := json.Unmarshal([]byte(feiShuConfig.Content), &config)
+		if err != nil {
+			logger.Warningf("reload %s failed: %s", feishu.SsoTypeName, err)
+		} else {
+			if s.FeiShu != nil {
+				s.FeiShu.Reload(config)
+			} else {
+				s.FeiShu = feishu.New(config)
+			}
+		}
+	} else {
+		s.FeiShu = nil
 	}
 
 	s.LastUpdateTime = lastUpdateTime

@@ -376,6 +376,7 @@ type InitAlertRule struct {
 	CreateBy          string `gorm:"size:64;not null;default:''"`
 	UpdateAt          int64  `gorm:"not null;default:0;index"`
 	UpdateBy          string `gorm:"size:64;not null;default:''"`
+	TimeZone          string `gorm:"size:64;not null;default:''"`
 	DatasourceQueries string `gorm:"type:text"`
 }
 
@@ -424,6 +425,7 @@ type InitPostgresAlertRule struct {
 	CreateBy          string `gorm:"size:64;not null;default:''"`
 	UpdateAt          int64  `gorm:"not null;default:0;index"`
 	UpdateBy          string `gorm:"size:64;not null;default:''"`
+	TimeZone          string `gorm:"size:64;not null;default:''"`
 	DatasourceQueries string `gorm:"type:text"`
 }
 
@@ -1084,7 +1086,7 @@ type InitPostgresDatasource struct {
 	Status         string `gorm:"size:255;not null;default:''"`
 	HTTP           string `gorm:"size:4096;not null;default:''"`
 	Auth           string `gorm:"size:8192;not null;default:''"`
-	IsDefault      bool   `gorm:"typr:boolean;not null;default:0"`
+	IsDefault      bool   `gorm:"type:boolean;not null;default:0"`
 	CreatedAt      int64  `gorm:"not null;default:0"`
 	CreatedBy      string `gorm:"size:64;not null;default:''"`
 	UpdatedAt      int64  `gorm:"not null;default:0"`
@@ -1545,10 +1547,6 @@ func sqliteDataBaseInit(db *gorm.DB) error {
 		{RoleName: "Standard", Operation: "/alert-rules-built-in"},
 		{RoleName: "Standard", Operation: "/dashboards-built-in"},
 		{RoleName: "Standard", Operation: "/trace/dependencies"},
-		{RoleName: "Admin", Operation: "/help/source"},
-		{RoleName: "Admin", Operation: "/help/sso"},
-		{RoleName: "Admin", Operation: "/help/notification-tpls"},
-		{RoleName: "Admin", Operation: "/help/notification-settings"},
 		{RoleName: "Standard", Operation: "/users"},
 		{RoleName: "Standard", Operation: "/user-groups"},
 		{RoleName: "Standard", Operation: "/user-groups/add"},
@@ -1716,8 +1714,7 @@ func mysqlDataBaseInit(db *gorm.DB) error {
 	for _, dt := range dts {
 		err := db.AutoMigrate(dt)
 		if err != nil {
-			fmt.Printf("mysqlDataBaseInit AutoMigrate error: %v\n", err)
-			return err
+			logger.Errorf("mysqlDataBaseInit AutoMigrate error: %v\n", err)
 		}
 	}
 
@@ -1725,7 +1722,7 @@ func mysqlDataBaseInit(db *gorm.DB) error {
 		tableName := "task_host_" + strconv.Itoa(i)
 		err := db.Table(tableName).AutoMigrate(&InitTaskHost{})
 		if err != nil {
-			return err
+			logger.Errorf("mysqlDataBaseInit AutoMigrate task_host_%d error: %v\n", i, err)
 		}
 	}
 
@@ -1747,10 +1744,6 @@ func mysqlDataBaseInit(db *gorm.DB) error {
 		{RoleName: "Standard", Operation: "/alert-rules-built-in"},
 		{RoleName: "Standard", Operation: "/dashboards-built-in"},
 		{RoleName: "Standard", Operation: "/trace/dependencies"},
-		{RoleName: "Admin", Operation: "/help/source"},
-		{RoleName: "Admin", Operation: "/help/sso"},
-		{RoleName: "Admin", Operation: "/help/notification-tpls"},
-		{RoleName: "Admin", Operation: "/help/notification-settings"},
 		{RoleName: "Standard", Operation: "/users"},
 		{RoleName: "Standard", Operation: "/user-groups"},
 		{RoleName: "Standard", Operation: "/user-groups/add"},
@@ -1949,10 +1942,6 @@ func postgresDataBaseInit(db *gorm.DB) error {
 		{RoleName: "Standard", Operation: "/alert-rules-built-in"},
 		{RoleName: "Standard", Operation: "/dashboards-built-in"},
 		{RoleName: "Standard", Operation: "/trace/dependencies"},
-		{RoleName: "Admin", Operation: "/help/source"},
-		{RoleName: "Admin", Operation: "/help/sso"},
-		{RoleName: "Admin", Operation: "/help/notification-tpls"},
-		{RoleName: "Admin", Operation: "/help/notification-settings"},
 		{RoleName: "Standard", Operation: "/users"},
 		{RoleName: "Standard", Operation: "/user-groups"},
 		{RoleName: "Standard", Operation: "/user-groups/add"},

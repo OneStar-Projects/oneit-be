@@ -184,6 +184,7 @@ CREATE TABLE `board` (
     `create_by` varchar(64) not null default '',
     `update_at` bigint not null default 0,
     `update_by` varchar(64) not null default '',
+    `note` varchar(1024) not null default '',
     `public_cate` bigint not null default 0
 );
 CREATE UNIQUE INDEX idx_board_group_id_name ON `board` (group_id, name);
@@ -252,6 +253,7 @@ CREATE TABLE `alert_rule` (
     `update_at` bigint not null default 0,
     `update_by` varchar(64) not null default '',
     `cron_pattern` varchar(64),
+    `time_zone` varchar(64) not null default '',
     `datasource_queries` text
 );
 CREATE INDEX `idx_alert_rule_group_id` ON `alert_rule` (`group_id` asc);
@@ -491,6 +493,7 @@ CREATE TABLE `builtin_payloads` (
   `name` varchar(191) not null,
   `tags` varchar(191) not null default '',
   `content` longtext not null,
+  `note` varchar(1024) not null default '',
   `created_at` bigint(20) not null default 0,
   `created_by` varchar(191) not null default '',
   `updated_at` bigint(20) not null default 0,
@@ -587,6 +590,7 @@ CREATE TABLE `datasource`
     `http` varchar(4096) not null default '',
     `auth` varchar(8192) not null default '',
     `is_default` tinyint not null default 0,
+    `weight` int not null default 0,
     `created_at` bigint not null default 0,
     `created_by` varchar(64) not null default '',
     `updated_at` bigint not null default 0,
@@ -649,6 +653,9 @@ CREATE TABLE `builtin_metrics` (
     `lang` varchar(191) NOT NULL DEFAULT '',
     `note` varchar(4096) NOT NULL,
     `expression` varchar(4096) NOT NULL,
+    `expression_type` varchar(32) NOT NULL DEFAULT 'promql',
+    `metric_type` varchar(191) NOT NULL DEFAULT '',
+    `extra_fields` text,
     `created_at` bigint NOT NULL DEFAULT 0,
     `created_by` varchar(191) NOT NULL DEFAULT '',
     `updated_at` bigint NOT NULL DEFAULT 0,

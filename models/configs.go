@@ -1,10 +1,12 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/ccfos/nightingale/v6/pkg/ctx"
@@ -18,16 +20,17 @@ import (
 )
 
 type Configs struct { //ckey+external
-	Id        int64  `json:"id" gorm:"primaryKey"`
-	Ckey      string `json:"ckey"` // Before inserting external configs, check if they are already defined as built-in configs.
-	Cval      string `json:"cval"`
-	Note      string `json:"note"`
-	External  int    `json:"external"`  //Controls frontend list display: 0 hides built-in (default), 1 shows external
-	Encrypted int    `json:"encrypted"` //Indicates whether the value(cval) is encrypted (1 for ciphertext, 0 for plaintext(default))
-	CreateAt  int64  `json:"create_at"`
-	CreateBy  string `json:"create_by"`
-	UpdateAt  int64  `json:"update_at"`
-	UpdateBy  string `json:"update_by"`
+	Id               int64  `json:"id" gorm:"primaryKey"`
+	Ckey             string `json:"ckey"` // Before inserting external configs, check if they are already defined as built-in configs.
+	Cval             string `json:"cval"`
+	Note             string `json:"note"`
+	External         int    `json:"external"`  //Controls frontend list display: 0 hides built-in (default), 1 shows external
+	Encrypted        int    `json:"encrypted"` //Indicates whether the value(cval) is encrypted (1 for ciphertext, 0 for plaintext(default))
+	CreateAt         int64  `json:"create_at"`
+	CreateBy         string `json:"create_by"`
+	UpdateAt         int64  `json:"update_at"`
+	UpdateBy         string `json:"update_by"`
+	UpdateByNickname string `json:"update_by_nickname" gorm:"-"`
 }
 
 func (Configs) TableName() string {
@@ -40,12 +43,67 @@ var (
 )
 
 const (
-	SALT            = "salt"
-	RSA_PRIVATE_KEY = "rsa_private_key"
-	RSA_PUBLIC_KEY  = "rsa_public_key"
-	RSA_PASSWORD    = "rsa_password"
-	JWT_SIGNING_KEY = "jwt_signing_key"
+	SALT                     = "salt"
+	RSA_PRIVATE_KEY          = "rsa_private_key"
+	RSA_PUBLIC_KEY           = "rsa_public_key"
+	RSA_PASSWORD             = "rsa_password"
+	JWT_SIGNING_KEY          = "jwt_signing_key"
+	PHONE_ENCRYPTION_ENABLED = "phone_encryption_enabled" // 手机号加密开关
 )
+
+// 手机号加密配置缓存
+var (
+	phoneEncryptionCache struct {
+		sync.RWMutex
+		enabled    bool
+		privateKey []byte
+		publicKey  []byte
+		password   string
+		loaded     bool
+	}
+)
+
+// LoadPhoneEncryptionConfig 加载手机号加密配置到缓存
+func LoadPhoneEncryptionConfig(ctx *ctx.Context) error {
+	enabled, err := GetPhoneEncryptionEnabled(ctx)
+	if err != nil {
+		return errors.WithMessage(err, "failed to get phone encryption enabled")
+	}
+
+	privateKey, publicKey, password, err := GetRSAKeys(ctx)
+	if err != nil {
+		return errors.WithMessage(err, "failed to get RSA keys")
+	}
+
+	phoneEncryptionCache.Lock()
+	defer phoneEncryptionCache.Unlock()
+
+	phoneEncryptionCache.enabled = enabled
+	phoneEncryptionCache.privateKey = privateKey
+	phoneEncryptionCache.publicKey = publicKey
+	phoneEncryptionCache.password = password
+	phoneEncryptionCache.loaded = true
+
+	logger.Debugf("Phone encryption config loaded: enabled=%v", enabled)
+	return nil
+}
+
+// GetPhoneEncryptionConfigFromCache 从缓存获取手机号加密配置
+func GetPhoneEncryptionConfigFromCache() (enabled bool, publicKey []byte, privateKey []byte, password string, loaded bool) {
+	phoneEncryptionCache.RLock()
+	defer phoneEncryptionCache.RUnlock()
+
+	return phoneEncryptionCache.enabled,
+		phoneEncryptionCache.publicKey,
+		phoneEncryptionCache.privateKey,
+		phoneEncryptionCache.password,
+		phoneEncryptionCache.loaded
+}
+
+// RefreshPhoneEncryptionCache 刷新缓存（在修改配置后调用）
+func RefreshPhoneEncryptionCache(ctx *ctx.Context) error {
+	return LoadPhoneEncryptionConfig(ctx)
+}
 
 func InitJWTSigningKey(ctx *ctx.Context) string {
 	val, err := ConfigsGet(ctx, JWT_SIGNING_KEY)
@@ -196,6 +254,70 @@ func ConfigsGetFlashDutyAppKey(ctx *ctx.Context) (string, error) {
 		}
 	}
 	return configs[0].Cval, nil
+}
+
+func ConfigsGetSiteInfo(ctx *ctx.Context) (string, error) {
+	configs, err := ConfigsSelectByCkey(ctx, "site_info")
+	if err != nil {
+		return "", err
+	}
+	if len(configs) == 0 || configs[0].Cval == "" {
+		return "", errors.New("site_info is empty")
+	}
+	return configs[0].Cval, nil
+}
+
+func ConfigsGetSiteUrl(ctx *ctx.Context) (string, error) {
+	siteInfo, err := ConfigsGetSiteInfo(ctx)
+	if err != nil {
+		return "", err
+	}
+	// 转为json获取其中的site_url字段
+	var siteInfoMap map[string]interface{}
+	err = json.Unmarshal([]byte(siteInfo), &siteInfoMap)
+	if err != nil {
+		return "", errors.WithMessage(err, "failed to unmarshal site_info")
+	}
+	siteUrl, ok := siteInfoMap["site_url"].(string)
+	if !ok || siteUrl == "" {
+		return "", errors.New("site_url is empty in site_info")
+	}
+	return siteUrl, nil
+}
+
+// GetPhoneEncryptionEnabled 获取手机号加密是否开启
+func GetPhoneEncryptionEnabled(ctx *ctx.Context) (bool, error) {
+	val, err := ConfigsGet(ctx, PHONE_ENCRYPTION_ENABLED)
+	if err != nil {
+		return false, err
+	}
+	return val == "true" || val == "1", nil
+}
+
+// SetPhoneEncryptionEnabled 设置手机号加密开关
+func SetPhoneEncryptionEnabled(ctx *ctx.Context, enabled bool) error {
+	val := "false"
+	if enabled {
+		val = "true"
+	}
+	return ConfigsSet(ctx, PHONE_ENCRYPTION_ENABLED, val)
+}
+
+// GetRSAKeys 获取RSA密钥对
+func GetRSAKeys(ctx *ctx.Context) (privateKey []byte, publicKey []byte, password string, err error) {
+	privateKeyVal, err := ConfigsGet(ctx, RSA_PRIVATE_KEY)
+	if err != nil {
+		return nil, nil, "", errors.WithMessage(err, "failed to get RSA private key")
+	}
+	publicKeyVal, err := ConfigsGet(ctx, RSA_PUBLIC_KEY)
+	if err != nil {
+		return nil, nil, "", errors.WithMessage(err, "failed to get RSA public key")
+	}
+	passwordVal, err := ConfigsGet(ctx, RSA_PASSWORD)
+	if err != nil {
+		return nil, nil, "", errors.WithMessage(err, "failed to get RSA password")
+	}
+	return []byte(privateKeyVal), []byte(publicKeyVal), passwordVal, nil
 }
 
 func ConfigsSelectByCkey(ctx *ctx.Context, ckey string) ([]Configs, error) {

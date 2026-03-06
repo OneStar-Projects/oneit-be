@@ -127,7 +127,7 @@ func (e *AlertHisEvent) FillNotifyGroups(ctx *ctx.Context, cache map[int64]*User
 
 func AlertHisEventTotal(
 	ctx *ctx.Context, prods []string, bgids []int64, stime, etime int64, severity int,
-	recovered int, dsIds []int64, cates []string, ruleId int64, query string) (int64, error) {
+	recovered int, dsIds []int64, cates []string, ruleId int64, query string, eventIds []int64) (int64, error) {
 	session := DB(ctx).Model(&AlertHisEvent{}).Where("last_eval_time between ? and ?", stime, etime)
 
 	if len(prods) > 0 {
@@ -158,6 +158,10 @@ func AlertHisEventTotal(
 		session = session.Where("rule_id = ?", ruleId)
 	}
 
+	if len(eventIds) > 0 {
+		session = session.Where("id in ?", eventIds)
+	}
+
 	if query != "" {
 		arr := strings.Fields(query)
 		for i := 0; i < len(arr); i++ {
@@ -171,7 +175,7 @@ func AlertHisEventTotal(
 
 func AlertHisEventGets(ctx *ctx.Context, prods []string, bgids []int64, stime, etime int64,
 	severity int, recovered int, dsIds []int64, cates []string, ruleId int64, query string,
-	limit, offset int) ([]AlertHisEvent, error) {
+	limit, offset int, eventIds []int64) ([]AlertHisEvent, error) {
 	session := DB(ctx).Where("last_eval_time between ? and ?", stime, etime)
 
 	if len(prods) != 0 {
@@ -200,6 +204,10 @@ func AlertHisEventGets(ctx *ctx.Context, prods []string, bgids []int64, stime, e
 
 	if ruleId > 0 {
 		session = session.Where("rule_id = ?", ruleId)
+	}
+
+	if len(eventIds) > 0 {
+		session = session.Where("id in ?", eventIds)
 	}
 
 	if query != "" {
@@ -241,6 +249,18 @@ func AlertHisEventGet(ctx *ctx.Context, where string, args ...interface{}) (*Ale
 
 func AlertHisEventGetById(ctx *ctx.Context, id int64) (*AlertHisEvent, error) {
 	return AlertHisEventGet(ctx, "id=?", id)
+}
+
+func AlertHisEventGetByHash(ctx *ctx.Context, hash string) (*AlertHisEvent, error) {
+	var lst []*AlertHisEvent
+	err := DB(ctx).Where("hash = ?", hash).Order("trigger_time desc").Limit(1).Find(&lst).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(lst) == 0 {
+		return nil, nil
+	}
+	return lst[0], nil
 }
 
 func AlertHisEventBatchDelete(ctx *ctx.Context, timestamp int64, severities []int, limit int) (int64, error) {
@@ -415,6 +435,10 @@ func (e *AlertHisEvent) ToCur() *AlertCurEvent {
 		NotifyChannelsJSON: e.NotifyChannelsJSON,
 		NotifyGroupsJSON:   e.NotifyGroupsJSON,
 		OriginalTagsJSON:   e.OriginalTagsJSON,
+		NotifyRuleIds:      e.NotifyRuleIds,
+		NotifyRules:        e.NotifyRules,
+		NotifyVersion:      e.NotifyVersion,
+		RecoverTime:        e.RecoverTime,
 	}
 
 	cur.SetTagsMap()

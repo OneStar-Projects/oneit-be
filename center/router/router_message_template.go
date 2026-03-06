@@ -12,10 +12,10 @@ import (
 	"github.com/ccfos/nightingale/v6/pkg/slice"
 	"github.com/ccfos/nightingale/v6/pkg/strx"
 	"github.com/ccfos/nightingale/v6/pkg/tplx"
+	"github.com/ccfos/nightingale/v6/pkg/ginx"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/toolkits/pkg/ginx"
 )
 
 func (rt *Router) messageTemplatesAdd(c *gin.Context) {
@@ -154,6 +154,7 @@ func (rt *Router) messageTemplatesGet(c *gin.Context) {
 
 	lst, err := models.MessageTemplatesGetBy(rt.Ctx, notifyChannelIdents)
 	ginx.Dangerous(err)
+	models.FillUpdateByNicknames(rt.Ctx, lst)
 
 	if me.IsAdmin() {
 		ginx.NewRender(c).Data(lst, nil)
@@ -193,10 +194,9 @@ func (rt *Router) eventsMessage(c *gin.Context) {
 		events[i] = he.ToCur()
 	}
 
-	var defs = []string{
-		"{{$events := .}}",
-		"{{$event := index . 0}}",
-	}
+	renderData := make(map[string]interface{})
+	renderData["events"] = events
+	defs := models.GetDefs(renderData)
 	ret := make(map[string]string, len(req.Tpl.Content))
 	for k, v := range req.Tpl.Content {
 		text := strings.Join(append(defs, v), "")
@@ -207,7 +207,7 @@ func (rt *Router) eventsMessage(c *gin.Context) {
 		}
 
 		var buf bytes.Buffer
-		err = tpl.Execute(&buf, events)
+		err = tpl.Execute(&buf, renderData)
 		if err != nil {
 			ret[k] = err.Error()
 			continue

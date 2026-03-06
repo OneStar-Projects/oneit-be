@@ -3,7 +3,9 @@ package writer
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -15,7 +17,6 @@ import (
 	"github.com/ccfos/nightingale/v6/pushgw/kafka"
 	"github.com/ccfos/nightingale/v6/pushgw/pconf"
 	"github.com/ccfos/nightingale/v6/pushgw/pstat"
-	"github.com/ccfos/nightingale/v6/pushgw/writer/json"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
@@ -33,7 +34,7 @@ type WriterType struct {
 }
 
 func beforeWrite(key string, items []prompb.TimeSeries, forceUseServerTS bool, encodeType string) ([]byte, error) {
-	pstat.CounterWirteTotal.WithLabelValues(key).Add(float64(len(items)))
+	pstat.CounterWriteTotal.WithLabelValues(key).Add(float64(len(items)))
 
 	if forceUseServerTS {
 		ts := int64(fasttime.UnixTimestamp()) * 1000
@@ -52,8 +53,49 @@ func beforeWrite(key string, items []prompb.TimeSeries, forceUseServerTS bool, e
 
 		return proto.Marshal(req)
 	}
+	// 如果是 json 格式，将 NaN 值的数据丢弃掉
+	return json.Marshal(filterNaNSamples(items))
+}
 
-	return json.MarshalWithCustomFloat(items)
+func filterNaNSamples(items []prompb.TimeSeries) []prompb.TimeSeries {
+	// 早期检查：如果没有NaN值，直接返回原始数据
+	hasNaN := false
+	for i := range items {
+		for j := range items[i].Samples {
+			if math.IsNaN(items[i].Samples[j].Value) {
+				hasNaN = true
+				break
+			}
+		}
+		if hasNaN {
+			break
+		}
+	}
+
+	if !hasNaN {
+		return items
+	}
+
+	// 有NaN值时进行过滤，原地修改以减少内存分配
+	for i := range items {
+		samples := items[i].Samples
+		validCount := 0
+
+		// 原地过滤 samples，避免额外的内存分配
+		for j := range samples {
+			if !math.IsNaN(samples[j].Value) {
+				if validCount != j {
+					samples[validCount] = samples[j]
+				}
+				validCount++
+			}
+		}
+
+		// 保留所有时间序列，即使没有有效样本（此时Samples为空）
+		items[i].Samples = samples[:validCount]
+	}
+
+	return items
 }
 
 func (w WriterType) Write(key string, items []prompb.TimeSeries, headers ...map[string]string) {
@@ -83,7 +125,7 @@ func (w WriterType) Write(key string, items []prompb.TimeSeries, headers ...map[
 			break
 		}
 
-		pstat.CounterWirteErrorTotal.WithLabelValues(key).Add(float64(len(items)))
+		pstat.CounterWriteErrorTotal.WithLabelValues(key).Add(float64(len(items)))
 		logger.Warningf("post to %s got error: %v in %d times", w.Opts.Url, err, i)
 
 		if i == 0 {
@@ -139,7 +181,30 @@ func (w WriterType) Post(req []byte, headers ...map[string]string) error {
 		}
 
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-			logger.Warningf("push data with remote write:%s request got status code: %v, response body: %s", url, resp.StatusCode, string(body))
+			// 解码并解析 req 以便打印指标信息
+			decoded, decodeErr := snappy.Decode(nil, req)
+			metricsInfo := "failed to decode request"
+			if decodeErr == nil {
+				var writeReq prompb.WriteRequest
+				if unmarshalErr := proto.Unmarshal(decoded, &writeReq); unmarshalErr == nil {
+					metricsInfo = fmt.Sprintf("timeseries count: %d", len(writeReq.Timeseries))
+					logger.Warningf("push data with remote write:%s request got status code: %v, response body: %s, %s", url, resp.StatusCode, string(body), metricsInfo)
+					// 只打印前几条样本，避免日志泛滥
+					sampleCount := 5
+					if sampleCount > len(writeReq.Timeseries) {
+						sampleCount = len(writeReq.Timeseries)
+					}
+					for i := 0; i < sampleCount; i++ {
+						logger.Warningf("push data with remote write:%s timeseries: [%d] %s", url, i, writeReq.Timeseries[i].String())
+					}
+				} else {
+					metricsInfo = fmt.Sprintf("failed to unmarshal: %v", unmarshalErr)
+					logger.Warningf("push data with remote write:%s request got status code: %v, response body: %s, metrics: %s", url, resp.StatusCode, string(body), metricsInfo)
+				}
+			} else {
+				metricsInfo = fmt.Sprintf("failed to decode: %v", decodeErr)
+				logger.Warningf("push data with remote write:%s request got status code: %v, response body: %s, metrics: %s", url, resp.StatusCode, string(body), metricsInfo)
+			}
 			continue
 		}
 
@@ -220,6 +285,10 @@ func (ws *WritersType) isCriticalBackend(key string) bool {
 	// 使用类型断言判断
 	switch backend.(type) {
 	case WriterType:
+		if backend.(WriterType).Opts.AsyncWrite {
+			return false
+		}
+
 		// HTTP Writer 作为关键后端
 		return true
 	case KafkaWriterType:
@@ -321,7 +390,7 @@ func (ws *WritersType) writeToNonCriticalBackend(key string, series []prompb.Tim
 		ws.PushConcurrency.Add(-1)
 		logger.Warningf("push concurrency limit exceeded, current: %d, limit: %d, dropping %d series for backend: %s",
 			currentConcurrency-1, ws.pushgw.PushConcurrency, len(series), key)
-		pstat.CounterWirteErrorTotal.WithLabelValues(key).Add(float64(len(series)))
+		pstat.CounterWriteErrorTotal.WithLabelValues(key).Add(float64(len(series)))
 		return
 	}
 
@@ -395,7 +464,7 @@ func (ws *WritersType) initWriters() error {
 	return nil
 }
 
-func initKakfaSASL(cfg *sarama.Config, opt pconf.KafkaWriterOptions) {
+func initKafkaSASL(cfg *sarama.Config, opt pconf.KafkaWriterOptions) {
 	if opt.SASL != nil && opt.SASL.Enable {
 		cfg.Net.SASL.Enable = true
 		cfg.Net.SASL.User = opt.SASL.User
@@ -412,7 +481,7 @@ func (ws *WritersType) initKafkaWriters() error {
 
 	for i := 0; i < len(opts); i++ {
 		cfg := sarama.NewConfig()
-		initKakfaSASL(cfg, opts[i])
+		initKafkaSASL(cfg, opts[i])
 		if opts[i].Timeout != 0 {
 			cfg.Producer.Timeout = time.Duration(opts[i].Timeout) * time.Second
 		}

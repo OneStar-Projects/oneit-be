@@ -66,9 +66,11 @@ func MigrateTables(db *gorm.DB) error {
 	dts := []interface{}{&RecordingRule{}, &AlertRule{}, &AlertSubscribe{}, &AlertMute{},
 		&TaskRecord{}, &ChartShare{}, &Target{}, &Configs{}, &Datasource{}, &NotifyTpl{},
 		&Board{}, &BoardBusigroup{}, &Users{}, &SsoConfig{}, &models.BuiltinMetric{},
-		&models.MetricFilter{}, &models.NotificaitonRecord{}, &models.TargetBusiGroup{},
+		&models.MetricFilter{}, &models.NotificationRecord{}, &models.TargetBusiGroup{},
 		&models.UserToken{}, &models.DashAnnotation{}, MessageTemplate{}, NotifyRule{}, NotifyChannelConfig{}, &EsIndexPatternMigrate{},
-		&models.EventPipeline{}, &models.EmbeddedProduct{}, &models.SourceToken{}, &models.ManagedHost{}, &models.HostAgent{}, &models.AgentVersion{}, &models.AgentDeployment{}}
+		&models.EventPipeline{}, &models.EventPipelineExecution{}, &models.EmbeddedProduct{}, &models.SourceToken{},
+		&models.ManagedHost{}, &models.HostAgent{}, &models.AgentVersion{}, &models.AgentDeployment{},
+		&models.SavedView{}, &models.UserViewFavorite{}}
 
 	if isPostgres(db) {
 		dts = append(dts, &models.PostgresBuiltinComponent{})
@@ -98,7 +100,11 @@ func MigrateTables(db *gorm.DB) error {
 	}()
 
 	if !db.Migrator().HasTable(&models.BuiltinPayload{}) {
-		dts = append(dts, &models.BuiltinPayload{})
+		if isPostgres(db) {
+			dts = append(dts, &models.PostgresBuiltinPayload{})
+		} else {
+			dts = append(dts, &models.BuiltinPayload{})
+		}
 	} else {
 		dts = append(dts, &BuiltinPayloads{})
 	}
@@ -127,7 +133,6 @@ func MigrateTables(db *gorm.DB) error {
 	// 删除 builtin_metrics 表的 idx_collector_typ_name 唯一索引
 	DropUniqueFiledLimit(db, &models.BuiltinMetric{}, "idx_collector_typ_name", "idx_collector_typ_name")
 
-	InsertPermPoints(db)
 	return nil
 }
 
@@ -167,116 +172,14 @@ func columnHasIndex(db *gorm.DB, dst interface{}, indexColumn string) bool {
 	return false
 }
 
-func InsertPermPoints(db *gorm.DB) {
-	var ops []models.RoleOperation
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/alert-mutes/put",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/log/index-patterns",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/help/variable-configs",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/ibex-settings",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/notification-templates",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/notification-templates/add",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/notification-templates/put",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/notification-templates/del",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/notification-rules",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/notification-rules/add",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/notification-rules/put",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/notification-rules/del",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/event-pipelines",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/event-pipelines/add",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/event-pipelines/put",
-	})
-
-	ops = append(ops, models.RoleOperation{
-		RoleName:  "Standard",
-		Operation: "/event-pipelines/del",
-	})
-
-	for _, op := range ops {
-		var count int64
-
-		session := db.Session(&gorm.Session{}).Model(&models.RoleOperation{})
-		err := session.Where("operation = ? AND role_name = ?", op.Operation, op.RoleName).Count(&count).Error
-
-		if err != nil {
-			logger.Errorf("check role operation exists failed, %v", err)
-			continue
-		}
-
-		if count > 0 {
-			continue
-		}
-
-		err = session.Create(&op).Error
-		if err != nil {
-			logger.Errorf("insert role operation failed, %v", err)
-		}
-	}
-}
-
 type AlertRule struct {
 	ExtraConfig       string                   `gorm:"type:text;column:extra_config"`
 	CronPattern       string                   `gorm:"type:varchar(64);column:cron_pattern"`
+	TimeZone          string                   `gorm:"type:varchar(64);column:time_zone;not null;default:''"`
 	DatasourceQueries []models.DatasourceQuery `gorm:"datasource_queries;type:text;serializer:json"` // datasource queries
 	NotifyRuleIds     []int64                  `gorm:"column:notify_rule_ids;type:varchar(1024)"`
 	NotifyVersion     int                      `gorm:"column:notify_version;type:int;default:0"`
+	PipelineConfigs   []models.PipelineConfig  `gorm:"column:pipeline_configs;type:text;serializer:json"`
 }
 
 type AlertSubscribe struct {
@@ -333,6 +236,7 @@ type Target struct {
 type Datasource struct {
 	IsDefault  bool   `gorm:"column:is_default;type:boolean;comment:is default datasource"`
 	Identifier string `gorm:"column:identifier;type:varchar(255);default:'';comment:identifier"`
+	Weight     int    `gorm:"column:weight;type:int;default:0;comment:weight for sorting"`
 }
 
 type Configs struct {
@@ -342,20 +246,21 @@ type Configs struct {
 	External  int    `gorm:"column:external;type:int;default:0;comment:0\\:built-in 1\\:external"`
 	Encrypted int    `gorm:"column:encrypted;type:int;default:0;comment:0\\:plaintext 1\\:ciphertext"`
 	CreateAt  int64  `gorm:"column:create_at;type:int;default:0;comment:create_at"`
-	CreateBy  string `gorm:"column:create_by;type:varchar(64);default:'';comment:cerate_by"`
+	CreateBy  string `gorm:"column:create_by;type:varchar(64);default:'';comment:create_by"`
 	UpdateAt  int64  `gorm:"column:update_at;type:int;default:0;comment:update_at"`
 	UpdateBy  string `gorm:"column:update_by;type:varchar(64);default:'';comment:update_by"`
 }
 
 type NotifyTpl struct {
 	CreateAt int64  `gorm:"column:create_at;type:int;default:0;comment:create_at"`
-	CreateBy string `gorm:"column:create_by;type:varchar(64);default:'';comment:cerate_by"`
+	CreateBy string `gorm:"column:create_by;type:varchar(64);default:'';comment:create_by"`
 	UpdateAt int64  `gorm:"column:update_at;type:int;default:0;comment:update_at"`
 	UpdateBy string `gorm:"column:update_by;type:varchar(64);default:'';comment:update_by"`
 }
 
 type Board struct {
-	PublicCate int `gorm:"column:public_cate;int;not null;default:0;comment:0 anonymous 1 login 2 busi"`
+	PublicCate int    `gorm:"column:public_cate;int;not null;default:0;comment:0 anonymous 1 login 2 busi"`
+	Note       string `gorm:"column:note;type:varchar(1024);not null;default:'';comment:note"`
 }
 
 type BoardBusigroup struct {
@@ -364,8 +269,9 @@ type BoardBusigroup struct {
 }
 
 type Users struct {
-	Belong         string `gorm:"column:belong;varchar(16);default:'';comment:belong"`
+	Belong         string `gorm:"column:belong;type:varchar(16);default:'';comment:belong"`
 	LastActiveTime int64  `gorm:"column:last_active_time;type:int;default:0;comment:last_active_time"`
+	Phone          string `gorm:"column:phone;type:varchar(1024);not null;default:''"`
 }
 
 type SsoConfig struct {
@@ -373,8 +279,9 @@ type SsoConfig struct {
 }
 
 type BuiltinPayloads struct {
-	UUID        int64 `json:"uuid" gorm:"type:bigint;not null;index:idx_uuid;comment:'uuid of payload'"`
-	ComponentID int64 `json:"component_id" gorm:"type:bigint;index:idx_component,sort:asc;not null;default:0;comment:'component_id of payload'"`
+	UUID        int64  `json:"uuid" gorm:"type:bigint;not null;index:idx_uuid;comment:'uuid of payload'"`
+	ComponentID int64  `json:"component_id" gorm:"type:bigint;index:idx_component,sort:asc;not null;default:0;comment:'component_id of payload'"`
+	Note        string `json:"note" gorm:"type:varchar(1024);not null;default:'';comment:'note of payload'"`
 }
 
 type TaskHostDoing struct {
@@ -444,6 +351,7 @@ type NotifyRule struct {
 	UserGroupIds    []int64                 `gorm:"column:user_group_ids;type:varchar(255)"`
 	NotifyConfigs   []models.NotifyConfig   `gorm:"column:notify_configs;type:text"`
 	PipelineConfigs []models.PipelineConfig `gorm:"column:pipeline_configs;type:text"`
+	ExtraConfig     interface{}             `gorm:"column:extra_config;type:text"`
 	CreateAt        int64                   `gorm:"column:create_at;not null;default:0"`
 	CreateBy        string                  `gorm:"column:create_by;type:varchar(64);not null;default:''"`
 	UpdateAt        int64                   `gorm:"column:update_at;not null;default:0"`

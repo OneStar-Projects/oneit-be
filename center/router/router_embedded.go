@@ -5,14 +5,15 @@ import (
 
 	"github.com/ccfos/nightingale/v6/models"
 	"github.com/ccfos/nightingale/v6/pkg/ctx"
+	"github.com/ccfos/nightingale/v6/pkg/ginx"
 
 	"github.com/gin-gonic/gin"
-	"github.com/toolkits/pkg/ginx"
 )
 
 func (rt *Router) embeddedProductGets(c *gin.Context) {
 	products, err := models.EmbeddedProductGets(rt.Ctx)
 	ginx.Dangerous(err)
+	models.FillUpdateByNicknames(rt.Ctx, products)
 	// 获取当前用户可访问的Group ID 列表
 	me := c.MustGet("user").(*models.User)
 

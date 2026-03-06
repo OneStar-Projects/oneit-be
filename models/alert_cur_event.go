@@ -15,8 +15,8 @@ import (
 	"github.com/ccfos/nightingale/v6/pkg/poster"
 	"github.com/ccfos/nightingale/v6/pkg/tplx"
 	"github.com/ccfos/nightingale/v6/pkg/unit"
+	"github.com/ccfos/nightingale/v6/pkg/ginx"
 
-	"github.com/toolkits/pkg/ginx"
 	"github.com/toolkits/pkg/logger"
 )
 
@@ -78,9 +78,12 @@ type AlertCurEvent struct {
 	RuleHash           string              `json:"rule_hash" gorm:"-"`
 	ExtraInfoMap       []map[string]string `json:"extra_info_map" gorm:"-"`
 	NotifyRuleIds      []int64             `json:"notify_rule_ids" gorm:"serializer:json"`
+	NotifyRuleId       int64               `json:"notify_rule_id" gorm:"-"`
+	NotifyRuleName     string              `json:"notify_rule_name" gorm:"-"`
 
 	NotifyVersion int                `json:"notify_version"  gorm:"-"` // 0: old, 1: new
 	NotifyRules   []*EventNotifyRule `json:"notify_rules" gorm:"-"`
+	RecoverTime   int64              `json:"recover_time" gorm:"-"`
 }
 
 type EventNotifyRule struct {
@@ -493,6 +496,23 @@ func (e *AlertCurEvent) FE2DB() {
 	b, _ = json.Marshal(e.RuleConfigJson)
 	e.RuleConfig = string(b)
 
+}
+
+func (e *AlertCurEvent) FillTagsMap() {
+	e.TagsMap = make(map[string]string)
+	for i := 0; i < len(e.TagsJSON); i++ {
+		pair := strings.TrimSpace(e.TagsJSON[i])
+		if pair == "" {
+			continue
+		}
+
+		arr := strings.SplitN(pair, "=", 2)
+		if len(arr) != 2 {
+			continue
+		}
+
+		e.TagsMap[arr[0]] = arr[1]
+	}
 }
 
 func (e *AlertCurEvent) DB2Mem() {

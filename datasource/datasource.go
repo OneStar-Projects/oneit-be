@@ -67,11 +67,18 @@ func init() {
 		PluginType:     "pgsql",
 		PluginTypeName: "PostgreSQL",
 	}
+
+	DatasourceTypes[7] = DatasourceType{
+		Id:             7,
+		Category:       "logging",
+		PluginType:     "victorialogs",
+		PluginTypeName: "VictoriaLogs",
+	}
 }
 
-type NewDatasrouceFn func(settings map[string]interface{}) (Datasource, error)
+type NewDatasourceFn func(settings map[string]interface{}) (Datasource, error)
 
-var datasourceRegister = map[string]NewDatasrouceFn{}
+var datasourceRegister = map[string]NewDatasourceFn{}
 
 type Datasource interface {
 	Init(settings map[string]interface{}) (Datasource, error) // 初始化配置
@@ -126,4 +133,5 @@ type DatasourceInfo struct {
 	CreatedAt      int64                  `json:"created_at"`
 	UpdatedAt      int64                  `json:"updated_at"`
 	IsDefault      bool                   `json:"is_default"`
+	Weight         int                    `json:"weight"`
 }

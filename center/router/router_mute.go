@@ -9,16 +9,22 @@ import (
 	"github.com/ccfos/nightingale/v6/alert/mute"
 	"github.com/ccfos/nightingale/v6/models"
 	"github.com/ccfos/nightingale/v6/pkg/strx"
+	"github.com/ccfos/nightingale/v6/pkg/ginx"
 
 	"github.com/gin-gonic/gin"
-	"github.com/toolkits/pkg/ginx"
 	"github.com/toolkits/pkg/i18n"
 )
 
 // Return all, front-end search and paging
 func (rt *Router) alertMuteGetsByBG(c *gin.Context) {
 	bgid := ginx.UrlParamInt64(c, "id")
-	lst, err := models.AlertMuteGetsByBG(rt.Ctx, bgid)
+	prods := strings.Fields(ginx.QueryStr(c, "prods", ""))
+	query := ginx.QueryStr(c, "query", "")
+	expired := ginx.QueryInt(c, "expired", -1)
+	lst, err := models.AlertMuteGets(rt.Ctx, prods, bgid, -1, expired, query)
+	if err == nil {
+		models.FillUpdateByNicknames(rt.Ctx, lst)
+	}
 
 	ginx.NewRender(c).Data(lst, err)
 }
@@ -44,6 +50,9 @@ func (rt *Router) alertMuteGetsByGids(c *gin.Context) {
 	}
 
 	lst, err := models.AlertMuteGetsByBGIds(rt.Ctx, gids)
+	if err == nil {
+		models.FillUpdateByNicknames(rt.Ctx, lst)
+	}
 
 	ginx.NewRender(c).Data(lst, err)
 }
@@ -53,8 +62,17 @@ func (rt *Router) alertMuteGets(c *gin.Context) {
 	bgid := ginx.QueryInt64(c, "bgid", -1)
 	query := ginx.QueryStr(c, "query", "")
 	disabled := ginx.QueryInt(c, "disabled", -1)
-	lst, err := models.AlertMuteGets(rt.Ctx, prods, bgid, disabled, query)
+	expired := ginx.QueryInt(c, "expired", -1)
+	lst, err := models.AlertMuteGets(rt.Ctx, prods, bgid, disabled, expired, query)
+	if err == nil {
+		models.FillUpdateByNicknames(rt.Ctx, lst)
+	}
 
+	ginx.NewRender(c).Data(lst, err)
+}
+
+func (rt *Router) activeAlertMuteGets(c *gin.Context) {
+	lst, err := models.AlertMuteGetsAll(rt.Ctx)
 	ginx.NewRender(c).Data(lst, err)
 }
 
@@ -67,7 +85,9 @@ func (rt *Router) alertMuteAdd(c *gin.Context) {
 	f.CreateBy = username
 	f.UpdateBy = username
 	f.GroupId = ginx.UrlParamInt64(c, "id")
-	ginx.NewRender(c).Message(f.Add(rt.Ctx))
+
+	ginx.Dangerous(f.Add(rt.Ctx))
+	ginx.NewRender(c).Data(f.Id, nil)
 }
 
 type MuteTestForm struct {

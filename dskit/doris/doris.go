@@ -18,19 +18,30 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+const (
+	ShowIndexFieldIndexType  = "index_type"
+	ShowIndexFieldColumnName = "column_name"
+	ShowIndexKeyName         = "key_name"
+
+	SQLShowIndex = "SHOW INDEX FROM "
+)
+
 // Doris struct to hold connection details and the connection object
 type Doris struct {
 	Addr            string `json:"doris.addr" mapstructure:"doris.addr"`         // fe mysql endpoint
 	FeAddr          string `json:"doris.fe_addr" mapstructure:"doris.fe_addr"`   // fe http endpoint
 	User            string `json:"doris.user" mapstructure:"doris.user"`         //
 	Password        string `json:"doris.password" mapstructure:"doris.password"` //
-	Timeout         int    `json:"doris.timeout" mapstructure:"doris.timeout"`
+	Timeout         int    `json:"doris.timeout" mapstructure:"doris.timeout"`   // ms
 	MaxIdleConns    int    `json:"doris.max_idle_conns" mapstructure:"doris.max_idle_conns"`
 	MaxOpenConns    int    `json:"doris.max_open_conns" mapstructure:"doris.max_open_conns"`
 	ConnMaxLifetime int    `json:"doris.conn_max_lifetime" mapstructure:"doris.conn_max_lifetime"`
 	MaxQueryRows    int    `json:"doris.max_query_rows" mapstructure:"doris.max_query_rows"`
 	ClusterName     string `json:"doris.cluster_name" mapstructure:"doris.cluster_name"`
 	EnableWrite     bool   `json:"doris.enable_write" mapstructure:"doris.enable_write"`
+	// 写用户，用来区分读写用户，减少数据源
+	UserWrite     string `json:"doris.user_write" mapstructure:"doris.user_write"`
+	PasswordWrite string `json:"doris.password_write" mapstructure:"doris.password_write"`
 }
 
 // NewDorisWithSettings initializes a new Doris instance with the given settings
@@ -63,7 +74,7 @@ func (d *Doris) NewConn(ctx context.Context, database string) (*sql.DB, error) {
 
 	// Set default values similar to postgres implementation
 	if d.Timeout == 0 {
-		d.Timeout = 60
+		d.Timeout = 60000
 	}
 	if d.MaxIdleConns == 0 {
 		d.MaxIdleConns = 10
@@ -80,13 +91,13 @@ func (d *Doris) NewConn(ctx context.Context, database string) (*sql.DB, error) {
 
 	var keys []string
 	keys = append(keys, d.Addr)
-	keys = append(keys, d.Password, d.User)
+	keys = append(keys, d.User, d.Password)
 	if len(database) > 0 {
 		keys = append(keys, database)
 	}
-	cachedkey := strings.Join(keys, ":")
+	cachedKey := strings.Join(keys, ":")
 	// cache conn with database
-	conn, ok := pool.PoolClient.Load(cachedkey)
+	conn, ok := pool.PoolClient.Load(cachedKey)
 	if ok {
 		return conn.(*sql.DB), nil
 	}
@@ -94,7 +105,7 @@ func (d *Doris) NewConn(ctx context.Context, database string) (*sql.DB, error) {
 	var err error
 	defer func() {
 		if db != nil && err == nil {
-			pool.PoolClient.Store(cachedkey, db)
+			pool.PoolClient.Store(cachedKey, db)
 		}
 	}()
 
@@ -113,13 +124,86 @@ func (d *Doris) NewConn(ctx context.Context, database string) (*sql.DB, error) {
 	return db, nil
 }
 
+// NewWriteConn establishes a new connection to Doris for write operations
+// When EnableWrite is true and UserWrite is configured, it uses the write user credentials
+// Otherwise, it reuses the read connection from NewConn
+func (d *Doris) NewWriteConn(ctx context.Context, database string) (*sql.DB, error) {
+	// If write user is not configured, reuse the read connection
+	if !d.EnableWrite || len(d.UserWrite) == 0 {
+		return d.NewConn(ctx, database)
+	}
+
+	if len(d.Addr) == 0 {
+		return nil, errors.New("empty fe-node addr")
+	}
+
+	// Set default values similar to postgres implementation
+	if d.Timeout == 0 {
+		d.Timeout = 60000
+	}
+	if d.MaxIdleConns == 0 {
+		d.MaxIdleConns = 10
+	}
+	if d.MaxOpenConns == 0 {
+		d.MaxOpenConns = 100
+	}
+	if d.ConnMaxLifetime == 0 {
+		d.ConnMaxLifetime = 14400
+	}
+	if d.MaxQueryRows == 0 {
+		d.MaxQueryRows = 500
+	}
+
+	// Use write user credentials
+	user := d.UserWrite
+	password := d.PasswordWrite
+
+	var keys []string
+	keys = append(keys, d.Addr)
+	keys = append(keys, user, password)
+	if len(database) > 0 {
+		keys = append(keys, database)
+	}
+	cachedKey := strings.Join(keys, ":")
+	// cache conn with database
+	conn, ok := pool.PoolClient.Load(cachedKey)
+	if ok {
+		return conn.(*sql.DB), nil
+	}
+	var db *sql.DB
+	var err error
+	defer func() {
+		if db != nil && err == nil {
+			pool.PoolClient.Store(cachedKey, db)
+		}
+	}()
+
+	// Simplified connection logic for Doris using MySQL driver
+	dsn := fmt.Sprintf("%s:%s@tcp(%s)/%s?charset=utf8", user, password, d.Addr, database)
+	db, err = sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set connection pool configuration for write connections
+	// Use more conservative values since write operations are typically less frequent
+	writeMaxIdleConns := max(d.MaxIdleConns/5, 2)
+	writeMaxOpenConns := max(d.MaxOpenConns/10, 5)
+
+	db.SetMaxIdleConns(writeMaxIdleConns)
+	db.SetMaxOpenConns(writeMaxOpenConns)
+	db.SetConnMaxLifetime(time.Duration(d.ConnMaxLifetime) * time.Second)
+
+	return db, nil
+}
+
 // createTimeoutContext creates a context with timeout based on Doris configuration
 func (d *Doris) createTimeoutContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	timeout := d.Timeout
 	if timeout == 0 {
-		timeout = 60
+		timeout = 60000
 	}
-	return context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	return context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
 }
 
 // ShowDatabases lists all databases in Doris
@@ -138,7 +222,7 @@ func (d *Doris) ShowDatabases(ctx context.Context) ([]string, error) {
 	}
 	defer rows.Close()
 
-	var databases []string
+	databases := make([]string, 0)
 	for rows.Next() {
 		var dbName string
 		if err := rows.Scan(&dbName); err != nil {
@@ -201,7 +285,7 @@ func (d *Doris) ShowResources(ctx context.Context, resourceType string) ([]strin
 	}
 
 	// 将 map 转换为切片
-	var resources []string
+	resources := make([]string, 0)
 	for name := range distinctName {
 		resources = append(resources, name)
 	}
@@ -226,7 +310,7 @@ func (d *Doris) ShowTables(ctx context.Context, database string) ([]string, erro
 	}
 	defer rows.Close()
 
-	var tables []string
+	tables := make([]string, 0)
 	for rows.Next() {
 		var tableName string
 		if err := rows.Scan(&tableName); err != nil {
@@ -312,6 +396,88 @@ func (d *Doris) DescTable(ctx context.Context, database, table string) ([]*types
 	return columns, nil
 }
 
+type TableIndexInfo struct {
+	ColumnName string `json:"column_name"`
+	IndexName  string `json:"index_name"`
+	IndexType  string `json:"index_type"`
+}
+
+// ShowIndexes 查询表的所有索引信息
+func (d *Doris) ShowIndexes(ctx context.Context, database, table string) ([]TableIndexInfo, error) {
+	if database == "" || table == "" {
+		return nil, fmt.Errorf("database and table names cannot be empty")
+	}
+
+	tCtx, cancel := d.createTimeoutContext(ctx)
+	defer cancel()
+
+	db, err := d.NewConn(tCtx, database)
+	if err != nil {
+		return nil, err
+	}
+
+	querySQL := fmt.Sprintf("%s `%s`.`%s`", SQLShowIndex, database, table)
+	rows, err := db.QueryContext(tCtx, querySQL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query indexes: %w", err)
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get columns: %w", err)
+	}
+	count := len(columns)
+
+	// 预映射列索引
+	colIdx := map[string]int{
+		ShowIndexKeyName:         -1,
+		ShowIndexFieldColumnName: -1,
+		ShowIndexFieldIndexType:  -1,
+	}
+	for i, col := range columns {
+		lCol := strings.ToLower(col)
+		if lCol == ShowIndexKeyName || lCol == ShowIndexFieldColumnName || lCol == ShowIndexFieldIndexType {
+			colIdx[lCol] = i
+		}
+	}
+
+	var result []TableIndexInfo
+	for rows.Next() {
+		// 使用 sql.RawBytes 可以接受任何类型并转为 string，避免复杂的类型断言
+		scanArgs := make([]interface{}, count)
+		values := make([]sql.RawBytes, count)
+		for i := range values {
+			scanArgs[i] = &values[i]
+		}
+
+		if err = rows.Scan(scanArgs...); err != nil {
+			return nil, err
+		}
+
+		info := TableIndexInfo{}
+		if i := colIdx[ShowIndexFieldColumnName]; i != -1 && i < count {
+			info.ColumnName = string(values[i])
+		}
+		if i := colIdx[ShowIndexKeyName]; i != -1 && i < count {
+			info.IndexName = string(values[i])
+		}
+		if i := colIdx[ShowIndexFieldIndexType]; i != -1 && i < count {
+			info.IndexType = string(values[i])
+		}
+
+		if info.ColumnName != "" {
+			result = append(result, info)
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return result, nil
+}
+
 // SelectRows selects rows from a specified table in Doris based on a given query with MaxQueryRows check
 func (d *Doris) SelectRows(ctx context.Context, database, table, query string) ([]map[string]interface{}, error) {
 	sql := fmt.Sprintf("SELECT * FROM %s.%s", database, table)
@@ -382,7 +548,7 @@ func (d *Doris) ExecContext(ctx context.Context, database string, sql string) er
 	timeoutCtx, cancel := d.createTimeoutContext(ctx)
 	defer cancel()
 
-	db, err := d.NewConn(timeoutCtx, database)
+	db, err := d.NewWriteConn(timeoutCtx, database)
 	if err != nil {
 		return err
 	}

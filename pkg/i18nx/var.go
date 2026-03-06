@@ -79,6 +79,11 @@ var I18N = `{
     "event attributes not match attributes filter": "事件属性不匹配属性过滤器",
     "failed to parse tag filter: %v": "解析标签过滤器失败: %v",
 
+    "event is dropped": "事件已被丢弃，不会进行通知",
+    "drop event success": "丢弃事件成功",
+    "drop event failed": "丢弃事件失败",
+    "callback success": "回调成功",
+
     "Infrastructure": "基础设施",
     "Host - View": "机器 - 查看",
     "Host - Modify": "机器 - 修改",
@@ -187,6 +192,20 @@ var I18N = `{
     "View Alerting Engines": "查看告警引擎列表",
     "View Product Version": "查看产品版本",
 
+    "Some alert rules still in the BusiGroup": "业务组中仍有告警规则",
+    "Some alert mutes still in the BusiGroup": "业务组中仍有屏蔽规则",
+    "Some alert subscribes still in the BusiGroup": "业务组中仍有订阅规则",
+    "Some Board still in the BusiGroup": "业务组中仍有仪表盘",
+    "Some targets still in the BusiGroup": "业务组中仍有监控对象",
+    "Some recording rules still in the BusiGroup": "业务组中仍有记录规则",
+    "Some recovery scripts still in the BusiGroup": "业务组中仍有自愈脚本",
+    "Some target busigroups still in the BusiGroup": "业务组中仍有监控对象",
+
+    "saved view not found": "保存的视图不存在",
+    "saved view name is blank": "视图名称不能为空",
+    "saved view page is blank": "视图页面不能为空",
+    "saved view name already exists in this page": "该页面下已存在同名的公开视图",
+
     "---------zh_CN--------": "---------zh_CN--------"
   },
   "zh_HK": {
@@ -269,7 +288,11 @@ var I18N = `{
     "event tag not match tag filter": "事件標籤不匹配標籤過濾器",
     "event attributes not match attributes filter": "事件屬性不匹配屬性過濾器",
     "failed to parse tag filter: %v": "解析標籤過濾器失敗: %v",
-
+    "event is dropped": "事件已被丟棄，不會進行通知",
+    "drop event success": "丟棄事件成功",
+    "drop event failed": "丟棄事件失敗",
+    "callback success": "回調成功",
+  
     "Infrastructure": "基礎設施",
     "Host - View": "機器 - 查看",
     "Host - Modify": "機器 - 修改",
@@ -378,6 +401,20 @@ var I18N = `{
     "View Alerting Engines": "查看告警引擎列表",
     "View Product Version": "查看產品版本",
 
+    "Some alert rules still in the BusiGroup": "業務組中仍有告警規則",
+    "Some alert mutes still in the BusiGroup": "業務組中仍有屏蔽規則",
+    "Some alert subscribes still in the BusiGroup": "業務組中仍有訂閱規則",
+    "Some Board still in the BusiGroup": "業務組中仍有儀表板",
+    "Some targets still in the BusiGroup": "業務組中仍有監控對象",
+    "Some recording rules still in the BusiGroup": "業務組中仍有記錄規則",
+    "Some recovery scripts still in the BusiGroup": "業務組中仍有自愈腳本",
+    "Some target busigroups still in the BusiGroup": "業務組中仍有監控對象",
+
+    "saved view not found": "保存的視圖不存在",
+    "saved view name is blank": "視圖名稱不能為空",
+    "saved view page is blank": "視圖頁面不能為空",
+    "saved view name already exists in this page": "該頁面下已存在同名的公開視圖",
+
     "---------zh_HK--------": "---------zh_HK--------"
   },
   "ja_JP": {
@@ -457,7 +494,11 @@ var I18N = `{
     "event tag not match tag filter": "イベントタグがタグフィルタと一致しません",
     "event attributes not match attributes filter": "イベント属性が属性フィルタと一致しません",
     "failed to parse tag filter: %v": "タグフィルタの解析に失敗しました: %v",
-
+    "event is dropped": "イベントが破棄されました，通知は行われません",
+    "drop event success": "イベント破棄成功",
+    "drop event failed": "イベント破棄失敗",
+    "callback success": "コールバック成功",
+   
     "Infrastructure": "インフラストラクチャ",
     "Host - View": "機器 - 閲覧",
     "Host - Modify": "機器 - 修正",
@@ -566,6 +607,20 @@ var I18N = `{
     "View Alerting Engines": "アラートエンジンの表示",
     "View Product Version": "製品のバージョンを見る",
 
+    "Some alert rules still in the BusiGroup": "ビジネスグループにまだアラートルールがあります",
+    "Some alert mutes still in the BusiGroup": "ビジネスグループにまだミュートルールがあります",
+    "Some alert subscribes still in the BusiGroup": "ビジネスグループにまだサブスクライブルールがあります",
+    "Some Board still in the BusiGroup": "ビジネスグループにまだダッシュボードがあります",
+    "Some targets still in the BusiGroup": "ビジネスグループにまだ監視対象があります",
+    "Some recording rules still in the BusiGroup": "ビジネスグループにまだ記録ルールがあります",
+    "Some recovery scripts still in the BusiGroup": "ビジネスグループにまだ自己回復スクリプトがあります",
+    "Some target busigroups still in the BusiGroup": "ビジネスグループにまだ監視対象があります",
+
+    "saved view not found": "保存されたビューが見つかりません",
+    "saved view name is blank": "ビュー名を空にすることはできません",
+    "saved view page is blank": "ビューページを空にすることはできません",
+    "saved view name already exists in this page": "このページには同名の公開ビューが既に存在します",
+
     "---------ja_JP--------": "---------ja_JP--------"
   },
   "ru_RU": {
@@ -645,7 +700,11 @@ var I18N = `{
     "event tag not match tag filter": "Теги события не соответствуют фильтру тегов",
     "event attributes not match attributes filter": "Атрибуты события не соответствуют фильтру атрибутов",
     "failed to parse tag filter: %v": "Не удалось разобрать фильтр тегов: %v",
-
+    "event is dropped": "Событие отброшено, уведомление не будет отправлено",
+    "drop event success": "Событие успешно отброшено",
+    "drop event failed": "Не удалось отбросить событие",
+    "callback success": "Обратный вызов успешен",
+   
     "Infrastructure": "Инфраструктура",
     "Host - View": "Хост - Просмотр",
     "Host - Modify": "Хост - Изменить",
@@ -753,6 +812,20 @@ var I18N = `{
     "View SSO Settings": "Просмотр настроек единого входа",
     "View Alerting Engines": "Просмотр списка алертинг-инженеров",
     "View Product Version": "Просмотр версии продукта",
+
+    "Some alert rules still in the BusiGroup": "В бизнес-группе еще есть правила оповещений",
+    "Some alert mutes still in the BusiGroup": "В бизнес-группе еще есть правила отключения оповещений",
+    "Some alert subscribes still in the BusiGroup": "В бизнес-группе еще есть правила подписки",
+    "Some Board still in the BusiGroup": "В бизнес-группе еще есть панели мониторинга",
+    "Some targets still in the BusiGroup": "В бизнес-группе еще есть объекты мониторинга",
+    "Some recording rules still in the BusiGroup": "В бизнес-группе еще есть правила записи",
+    "Some recovery scripts still in the BusiGroup": "В бизнес-группе еще есть скрипты самоисцеления",
+    "Some target busigroups still in the BusiGroup": "В бизнес-группе еще есть объекты мониторинга",
+
+    "saved view not found": "Сохраненный вид не найден",
+    "saved view name is blank": "Название вида не может быть пустым",
+    "saved view page is blank": "Страница вида не может быть пустой",
+    "saved view name already exists in this page": "На этой странице уже существует публичный вид с таким названием",
 
     "---------ru_RU--------": "---------ru_RU--------"
   }

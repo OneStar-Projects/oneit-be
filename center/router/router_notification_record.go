@@ -6,9 +6,9 @@ import (
 	"github.com/ccfos/nightingale/v6/alert/sender"
 	"github.com/ccfos/nightingale/v6/models"
 	"github.com/ccfos/nightingale/v6/pkg/ctx"
+	"github.com/ccfos/nightingale/v6/pkg/ginx"
 
 	"github.com/gin-gonic/gin"
-	"github.com/toolkits/pkg/ginx"
 	"github.com/toolkits/pkg/logger"
 )
 
@@ -33,7 +33,7 @@ type Record struct {
 
 // notificationRecordAdd
 func (rt *Router) notificationRecordAdd(c *gin.Context) {
-	var req []*models.NotificaitonRecord
+	var req []*models.NotificationRecord
 	ginx.BindJSON(c, &req)
 	err := sender.PushNotifyRecords(req)
 	ginx.Dangerous(err, 429)
@@ -43,14 +43,14 @@ func (rt *Router) notificationRecordAdd(c *gin.Context) {
 
 func (rt *Router) notificationRecordList(c *gin.Context) {
 	eid := ginx.UrlParamInt64(c, "eid")
-	lst, err := models.NotificaitonRecordsGetByEventId(rt.Ctx, eid)
+	lst, err := models.NotificationRecordsGetByEventId(rt.Ctx, eid)
 	ginx.Dangerous(err)
 
 	response := buildNotificationResponse(rt.Ctx, lst)
 	ginx.NewRender(c).Data(response, nil)
 }
 
-func buildNotificationResponse(ctx *ctx.Context, nl []*models.NotificaitonRecord) NotificationResponse {
+func buildNotificationResponse(ctx *ctx.Context, nl []*models.NotificationRecord) NotificationResponse {
 	response := NotificationResponse{
 		SubRules: []SubRule{},
 		Notifies: make(map[string][]Record),

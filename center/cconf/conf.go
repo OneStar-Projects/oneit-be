@@ -1,20 +1,26 @@
 package cconf
 
-import "time"
+import (
+	"time"
+
+	"github.com/ccfos/nightingale/v6/pkg/httpx"
+)
 
 type Center struct {
-	Plugins                []Plugin
-	MetricsYamlFile        string
-	OpsYamlFile            string
-	BuiltinIntegrationsDir string
-	I18NHeaderKey          string
-	MetricDesc             MetricDescType
-	AnonymousAccess        AnonymousAccess
-	UseFileAssets          bool
-	FlashDuty              FlashDuty
-	EventHistoryGroupView  bool
-	CleanNotifyRecordDay   int
-	MigrateBusiGroupLabel  bool
+	Plugins                   []Plugin
+	MetricsYamlFile           string
+	OpsYamlFile               string
+	BuiltinIntegrationsDir    string
+	I18NHeaderKey             string
+	MetricDesc                MetricDescType
+	AnonymousAccess           AnonymousAccess
+	UseFileAssets             bool
+	FlashDuty                 FlashDuty
+	EventHistoryGroupView     bool
+	CleanNotifyRecordDay      int
+	CleanPipelineExecutionDay int
+	MigrateBusiGroupLabel     bool
+	RSA                       httpx.RSAConfig
 }
 
 type Plugin struct {

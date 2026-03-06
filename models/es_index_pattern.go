@@ -1,6 +1,9 @@
 package models
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ccfos/nightingale/v6/pkg/ctx"
@@ -21,6 +24,7 @@ type EsIndexPattern struct {
 	CreateBy                   string `json:"create_by"`
 	UpdateAt                   int64  `json:"update_at"`
 	UpdateBy                   string `json:"update_by"`
+	UpdateByNickname           string `json:"update_by_nickname" gorm:"-"`
 	CrossClusterEnabled        int    `json:"cross_cluster_enabled"`
 	Note                       string `json:"note"`
 }
@@ -48,7 +52,68 @@ func EsIndexPatternDel(ctx *ctx.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
+
+	// 检查是否有告警规则引用了这些 index pattern
+	for _, id := range ids {
+		alertRules, err := GetAlertRulesByEsIndexPatternId(ctx, id)
+		if err != nil {
+			return errors.WithMessage(err, "failed to check alert rules")
+		}
+		if len(alertRules) > 0 {
+			names := make([]string, 0, len(alertRules))
+			for _, rule := range alertRules {
+				names = append(names, rule.Name)
+			}
+			return errors.Errorf("index pattern(id=%d) is used by alert rules: %s", id, strings.Join(names, ", "))
+		}
+	}
+
 	return DB(ctx).Where("id in ?", ids).Delete(new(EsIndexPattern)).Error
+}
+
+// GetAlertRulesByEsIndexPatternId 获取引用了指定 index pattern 的告警规则
+func GetAlertRulesByEsIndexPatternId(ctx *ctx.Context, indexPatternId int64) ([]*AlertRule, error) {
+	// index_pattern 存储在 rule_config JSON 字段的 queries 数组中
+	// 格式如: {"queries":[{"index_type":"index_pattern","index_pattern":123,...}]}
+	// 先用 LIKE 粗筛，再在代码中精确过滤
+	pattern := fmt.Sprintf(`%%"index_pattern":%d%%`, indexPatternId)
+
+	var candidates []*AlertRule
+	err := DB(ctx).Where("rule_config LIKE ?", pattern).Find(&candidates).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// 精确过滤：解析 JSON 检查 index_pattern 字段值是否精确匹配
+	var alertRules []*AlertRule
+	for _, rule := range candidates {
+		if ruleUsesIndexPattern(rule.RuleConfig, indexPatternId) {
+			alertRules = append(alertRules, rule)
+		}
+	}
+
+	return alertRules, nil
+}
+
+// ruleUsesIndexPattern 检查告警规则的 rule_config 是否引用了指定的 index_pattern
+func ruleUsesIndexPattern(ruleConfig string, indexPatternId int64) bool {
+	var config struct {
+		Queries []struct {
+			IndexPattern int64 `json:"index_pattern"`
+		} `json:"queries"`
+	}
+
+	if err := json.Unmarshal([]byte(ruleConfig), &config); err != nil {
+		return false
+	}
+
+	for _, query := range config.Queries {
+		if query.IndexPattern == indexPatternId {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (ei *EsIndexPattern) Update(ctx *ctx.Context, eip EsIndexPattern) error {
@@ -73,15 +138,15 @@ func (ei *EsIndexPattern) Update(ctx *ctx.Context, eip EsIndexPattern) error {
 	return DB(ctx).Model(ei).Select("*").Updates(eip).Error
 }
 
-func (dbIndexPatten *EsIndexPattern) DB2FE() {
-	if dbIndexPatten.AllowHideSystemIndices == 1 {
-		dbIndexPatten.AllowHideSystemIndicesBool = true
+func (dbIndexPattern *EsIndexPattern) DB2FE() {
+	if dbIndexPattern.AllowHideSystemIndices == 1 {
+		dbIndexPattern.AllowHideSystemIndicesBool = true
 	}
 }
 
-func (feIndexPatten *EsIndexPattern) FE2DB() {
-	if feIndexPatten.AllowHideSystemIndicesBool {
-		feIndexPatten.AllowHideSystemIndices = 1
+func (feIndexPattern *EsIndexPattern) FE2DB() {
+	if feIndexPattern.AllowHideSystemIndicesBool {
+		feIndexPattern.AllowHideSystemIndices = 1
 	}
 }
 
