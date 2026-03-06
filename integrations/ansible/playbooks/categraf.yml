@@ -1,0 +1,128 @@
+---
+- name: Deploy Categraf Agent
+  hosts: all
+  become: yes
+  vars:
+    # Default values, can be overridden by extra_vars
+    categraf_version: "latest"
+    nserver_write_url: "http://localhost:19000/prometheus/v1/write"
+    nserver_read_url: "http://localhost:19000/prometheus/v1/query"
+    install_dir: "/opt/categraf"
+    config_dir: "/etc/categraf"
+    user: "categraf"
+    group: "categraf"
+    
+  tasks:
+    - name: Check if target OS is supported
+      assert:
+        that:
+          - ansible_os_family in ['Debian', 'RedHat', 'Suse']
+        fail_msg: "Unsupported OS family: {{ ansible_os_family }}"
+
+    - name: Install required packages (Debian/Ubuntu)
+      apt:
+        name: 
+          - curl
+          - wget
+          - tar
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages (RedHat/CentOS)
+      yum:
+        name:
+          - curl
+          - wget
+          - tar
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Create categraf user
+      user:
+        name: "{{ user }}"
+        group: "{{ group }}"
+        system: yes
+        create_home: no
+        shell: /bin/false
+
+    - name: Create directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: '0755'
+      loop:
+        - "{{ install_dir }}"
+        - "{{ config_dir }}"
+        - "{{ config_dir }}/conf"
+
+    - name: Download Categraf binary
+      get_url:
+        url: "https://github.com/flashcatcloud/categraf/releases/download/v{{ categraf_version }}/categraf-v{{ categraf_version }}-linux-{{ ansible_architecture }}.tar.gz"
+        dest: "/tmp/categraf.tar.gz"
+        mode: '0644'
+      when: categraf_version != "latest"
+
+    - name: Download latest Categraf binary
+      get_url:
+        url: "https://github.com/flashcatcloud/categraf/releases/latest/download/categraf-linux-{{ ansible_architecture }}.tar.gz"
+        dest: "/tmp/categraf.tar.gz"
+        mode: '0644'
+      when: categraf_version == "latest"
+
+    - name: Extract Categraf binary
+      unarchive:
+        src: "/tmp/categraf.tar.gz"
+        dest: "{{ install_dir }}"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        remote_src: yes
+        extra_opts: ["--strip-components=1"]
+
+    - name: Create symlink for categraf binary
+      file:
+        src: "{{ install_dir }}/categraf"
+        dest: "/usr/local/bin/categraf"
+        state: link
+
+    - name: Create main config file
+      template:
+        src: "config.toml.j2"
+        dest: "{{ config_dir }}/config.toml"
+        owner: "{{ user }}"
+        group: "{{ group }}"
+        mode: '0644'
+
+    - name: Create systemd service file
+      template:
+        src: "categraf.service.j2"
+        dest: "/etc/systemd/system/categraf.service"
+        mode: '0644'
+      when: ansible_service_mgr == "systemd"
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+      when: ansible_service_mgr == "systemd"
+
+    - name: Enable and start categraf service
+      systemd:
+        name: categraf
+        enabled: yes
+        state: started
+      when: ansible_service_mgr == "systemd"
+
+    - name: Create init script (SysV)
+      template:
+        src: "categraf.init.j2"
+        dest: "/etc/init.d/categraf"
+        mode: '0755'
+      when: ansible_service_mgr != "systemd"
+
+    - name: Enable and start categraf service (SysV)
+      service:
+        name: categraf
+        enabled: yes
+        state: started
+      when: ansible_service_mgr != "systemd"

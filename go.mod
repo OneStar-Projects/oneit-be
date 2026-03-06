@@ -148,7 +148,7 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/automaxprocs v1.5.2 // indirect
 	golang.org/x/arch v0.3.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/crypto v0.32.0
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect

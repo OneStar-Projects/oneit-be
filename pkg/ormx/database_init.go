@@ -1399,6 +1399,55 @@ func (InitSqliteTaskHost) TableName() string {
 	return "task_host_0"
 }
 
+type InitManagedHost struct {
+	ID            uint64 `gorm:"primaryKey;autoIncrement"`
+	HostIdent     string `gorm:"size:191;not null;uniqueIndex;comment:'host identifier (IP or hostname)'"`
+	SSHIp         string `gorm:"size:15;not null;comment:'SSH IP address'"`
+	SSHPort       int    `gorm:"not null;default:22;comment:'SSH port'"`
+	SSHUser       string `gorm:"size:64;not null;comment:'SSH username'"`
+	AuthMethod    string `gorm:"size:10;not null;comment:'authentication method: key or password'"`
+	CredentialRef string `gorm:"size:191;not null;comment:'credential reference'"`
+	Status        string `gorm:"size:20;not null;default:'pending';comment:'host status: pending, active, failed, disabled'"`
+	Note          string `gorm:"size:1024;default:'';comment:'host description'"`
+	SudoRequired  bool   `gorm:"type:tinyint(1);not null;default:0;comment:'whether sudo is required'"`
+	CreateAt      int64  `gorm:"not null;default:0;comment:'create time'"`
+	UpdateAt      int64  `gorm:"not null;default:0;comment:'update time'"`
+	CreateBy      string `gorm:"size:64;not null;default:'';comment:'creator'"`
+	UpdateBy      string `gorm:"size:64;not null;default:'';comment:'updater'"`
+}
+
+func (InitManagedHost) TableName() string {
+	return "managed_hosts"
+}
+
+func (InitManagedHost) TableOptions() string {
+	return "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+}
+
+// InitHostAgent represents the host_agents table structure for database initialization
+type InitHostAgent struct {
+	ID            uint64 `gorm:"primaryKey;autoIncrement"`
+	HostID        uint64 `gorm:"not null;index:idx_host_id;comment:'managed host ID'"`
+	ComponentID   uint64 `gorm:"not null;index:idx_component_id;comment:'builtin component ID'"`
+	Status        string `gorm:"size:20;not null;default:'pending';comment:'deployment status: pending, deploying, success, failed'"`
+	ConfigData    string `gorm:"type:text;comment:'actual deployment configuration in JSON format'"`
+	DeployedAt    int64  `gorm:"not null;default:0;comment:'last deployment time'"`
+	LastHeartbeat int64  `gorm:"not null;default:0;comment:'last heartbeat time'"`
+	ErrorMessage  string `gorm:"type:text;comment:'error message if deployment failed'"`
+	CreateAt      int64  `gorm:"not null;default:0;comment:'create time'"`
+	UpdateAt      int64  `gorm:"not null;default:0;comment:'update time'"`
+	CreateBy      string `gorm:"size:64;not null;default:'';comment:'creator'"`
+	UpdateBy      string `gorm:"size:64;not null;default:'';comment:'updater'"`
+}
+
+func (InitHostAgent) TableName() string {
+	return "host_agents"
+}
+
+func (InitHostAgent) TableOptions() string {
+	return "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+}
+
 func DataBaseInit(c DBConfig, db *gorm.DB) error {
 	switch strings.ToLower(c.DBType) {
 	case "mysql":
@@ -1458,7 +1507,9 @@ func sqliteDataBaseInit(db *gorm.DB) error {
 		&InitChartGroup{},
 		&InitChart{},
 		&InitChartShare{},
-		&InitAlertRule{}}
+		&InitAlertRule{},
+		&InitManagedHost{},
+		&InitHostAgent{}}
 
 	for _, dt := range dts {
 		err := db.AutoMigrate(dt)
@@ -1540,6 +1591,10 @@ func sqliteDataBaseInit(db *gorm.DB) error {
 		{RoleName: "Standard", Operation: "/recording-rules/add"},
 		{RoleName: "Standard", Operation: "/recording-rules/put"},
 		{RoleName: "Standard", Operation: "/recording-rules/del"},
+		{RoleName: "Standard", Operation: "/managed-hosts"},
+		{RoleName: "Standard", Operation: "/managed-hosts/add"},
+		{RoleName: "Standard", Operation: "/managed-hosts/put"},
+		{RoleName: "Standard", Operation: "/managed-hosts/del"},
 	}
 
 	entries := []struct {
@@ -1654,7 +1709,9 @@ func mysqlDataBaseInit(db *gorm.DB) error {
 		&InitChartGroup{},
 		&InitChart{},
 		&InitChartShare{},
-		&InitAlertRule{}}
+		&InitAlertRule{},
+		&InitManagedHost{},
+		&InitHostAgent{}}
 
 	for _, dt := range dts {
 		err := db.AutoMigrate(dt)
@@ -1736,6 +1793,10 @@ func mysqlDataBaseInit(db *gorm.DB) error {
 		{RoleName: "Standard", Operation: "/recording-rules/add"},
 		{RoleName: "Standard", Operation: "/recording-rules/put"},
 		{RoleName: "Standard", Operation: "/recording-rules/del"},
+		{RoleName: "Standard", Operation: "/managed-hosts"},
+		{RoleName: "Standard", Operation: "/managed-hosts/add"},
+		{RoleName: "Standard", Operation: "/managed-hosts/put"},
+		{RoleName: "Standard", Operation: "/managed-hosts/del"},
 	}
 
 	entries := []struct {
@@ -1850,7 +1911,9 @@ func postgresDataBaseInit(db *gorm.DB) error {
 		&InitChartGroup{},
 		&InitChart{},
 		&InitChartShare{},
-		&InitPostgresAlertRule{}}
+		&InitPostgresAlertRule{},
+		&InitManagedHost{},
+		&InitHostAgent{}}
 
 	for _, dt := range dts {
 		err := db.AutoMigrate(dt)
@@ -1932,6 +1995,10 @@ func postgresDataBaseInit(db *gorm.DB) error {
 		{RoleName: "Standard", Operation: "/recording-rules/add"},
 		{RoleName: "Standard", Operation: "/recording-rules/put"},
 		{RoleName: "Standard", Operation: "/recording-rules/del"},
+		{RoleName: "Standard", Operation: "/managed-hosts"},
+		{RoleName: "Standard", Operation: "/managed-hosts/add"},
+		{RoleName: "Standard", Operation: "/managed-hosts/put"},
+		{RoleName: "Standard", Operation: "/managed-hosts/del"},
 	}
 
 	entries := []struct {

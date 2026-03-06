@@ -12,6 +12,7 @@ import (
 	"github.com/ccfos/nightingale/v6/center/cconf"
 	"github.com/ccfos/nightingale/v6/center/cstats"
 	"github.com/ccfos/nightingale/v6/center/metas"
+	"github.com/ccfos/nightingale/v6/center/service"
 	"github.com/ccfos/nightingale/v6/center/sso"
 	"github.com/ccfos/nightingale/v6/conf"
 	_ "github.com/ccfos/nightingale/v6/front/statik"
@@ -51,6 +52,7 @@ type Router struct {
 	UserGroupCache    *memsto.UserGroupCacheType
 	UserTokenCache    *memsto.UserTokenCacheType
 	Ctx               *ctx.Context
+	DeploymentManager *service.DeploymentManager
 
 	HeartbeatHook       HeartbeatHookFunc
 	TargetDeleteHook    models.TargetDeleteHookFunc
@@ -61,7 +63,8 @@ func New(httpConfig httpx.Config, center cconf.Center, alert aconf.Alert, ibex c
 	operations cconf.Operation, ds *memsto.DatasourceCacheType, ncc *memsto.NotifyConfigCacheType,
 	pc *prom.PromClientMap, redis storage.Redis,
 	sso *sso.SsoClient, ctx *ctx.Context, metaSet *metas.Set, idents *idents.Set,
-	tc *memsto.TargetCacheType, uc *memsto.UserCacheType, ugc *memsto.UserGroupCacheType, utc *memsto.UserTokenCacheType) *Router {
+	tc *memsto.TargetCacheType, uc *memsto.UserCacheType, ugc *memsto.UserGroupCacheType, utc *memsto.UserTokenCacheType,
+	deploymentManager *service.DeploymentManager) *Router {
 	return &Router{
 		HTTP:                httpConfig,
 		Center:              center,
@@ -80,6 +83,7 @@ func New(httpConfig httpx.Config, center cconf.Center, alert aconf.Alert, ibex c
 		UserGroupCache:      ugc,
 		UserTokenCache:      utc,
 		Ctx:                 ctx,
+		DeploymentManager:   deploymentManager,
 		HeartbeatHook:       func(ident string) map[string]interface{} { return nil },
 		TargetDeleteHook:    func(tx *gorm.DB, idents []string) error { return nil },
 		AlertRuleModifyHook: func(ar *models.AlertRule) {},
@@ -176,6 +180,9 @@ func (rt *Router) Config(r *gin.Engine) {
 	pagesPrefix := "/api/n9e"
 	pages := r.Group(pagesPrefix)
 	{
+
+		// Register agent version management routes first to avoid wildcard route conflicts
+		rt.RegisterAgentVersionRoutes(pages)
 
 		pages.DELETE("/datasource/series", rt.auth(), rt.admin(), rt.deleteDatasourceSeries)
 		if rt.Center.AnonymousAccess.PromQuerier {
@@ -561,6 +568,13 @@ func (rt *Router) Config(r *gin.Engine) {
 		pages.GET("/flashduty-channel-list/:id", rt.auth(), rt.user(), rt.flashDutyNotifyChannelsGet)
 		pages.GET("/notify-channel-config", rt.auth(), rt.user(), rt.notifyChannelGetBy)
 		pages.GET("/notify-channel-config/idents", rt.notifyChannelIdentsGet)
+
+		// Host Agent routes
+		pages.GET("/host-agents", rt.auth(), rt.user(), rt.hostAgentList)
+		pages.GET("/host-agents/:id", rt.auth(), rt.user(), rt.hostAgentGet)
+		pages.POST("/host-agents", rt.auth(), rt.user(), rt.hostAgentAdd)
+		pages.PUT("/host-agents/:id", rt.auth(), rt.user(), rt.hostAgentUpdate)
+		pages.DELETE("/host-agents", rt.auth(), rt.user(), rt.hostAgentDel)
 	}
 
 	r.GET("/api/n9e/versions", func(c *gin.Context) {
@@ -673,6 +687,8 @@ func (rt *Router) Config(r *gin.Engine) {
 
 			service.GET("/event-pipelines", rt.eventPipelinesListByService)
 		}
+
+		// Agent version management routes are now registered at the beginning of pages group
 	}
 
 	if rt.HTTP.APIForAgent.Enable {
@@ -683,6 +699,17 @@ func (rt *Router) Config(r *gin.Engine) {
 			}
 			heartbeat.POST("/heartbeat", rt.heartbeat)
 		}
+	}
+
+	// Register managed host routes
+	rt.RegisterManagedHostRoutes(r)
+
+	// Register SSH target routes
+	rt.RegisterSSHTargetRoutes(r)
+
+	// Register deployment routes
+	if rt.DeploymentManager != nil {
+		rt.RegisterDeployRoutes(r, rt.DeploymentManager)
 	}
 
 	rt.configNoRoute(r, &statikFS)
@@ -713,4 +740,115 @@ func Dangerous(c *gin.Context, v interface{}, code ...int) {
 	case error:
 		c.JSON(http.StatusOK, gin.H{"error": t.Error()})
 	}
+}
+
+// --- HostAgent Methods ---
+
+// hostAgentList 获取HostAgent列表
+func (rt *Router) hostAgentList(c *gin.Context) {
+	limit := ginx.QueryInt(c, "limit", 20)
+	offset := ginx.QueryInt(c, "offset", 0)
+	hostID := ginx.QueryInt64(c, "host_id", 0)
+	componentID := ginx.QueryInt64(c, "component_id", 0)
+	status := ginx.QueryStr(c, "status", "")
+
+	total, err := models.HostAgentCount(rt.Ctx, hostID, componentID, status)
+	ginx.Dangerous(err)
+
+	list, err := models.HostAgentGets(rt.Ctx, limit, offset, hostID, componentID, status)
+	ginx.Dangerous(err)
+
+	// Fill related information for each host agent
+	for i := range list {
+		// Fill host information
+		host, err := models.ManagedHostGet(rt.Ctx, list[i].HostID)
+		if err == nil && host != nil {
+			list[i].Host = host
+		}
+
+		// Fill component information
+		component, err := models.BuiltinComponentGet(rt.Ctx, "id = ?", list[i].ComponentID)
+		if err == nil && component != nil {
+			list[i].Component = component
+		}
+	}
+
+	ginx.NewRender(c).Data(gin.H{
+		"list":  list,
+		"total": total,
+	}, nil)
+}
+
+// hostAgentGet 获取单个HostAgent详情
+func (rt *Router) hostAgentGet(c *gin.Context) {
+	id := ginx.UrlParamInt64(c, "id")
+
+	hostAgent, err := models.HostAgentGet(rt.Ctx, id)
+	ginx.Dangerous(err)
+
+	if hostAgent == nil {
+		ginx.Bomb(http.StatusNotFound, "host agent not found")
+	}
+
+	// Fill host information
+	host, err := models.ManagedHostGet(rt.Ctx, hostAgent.HostID)
+	if err == nil && host != nil {
+		hostAgent.Host = host
+	}
+
+	// Fill component information
+	component, err := models.BuiltinComponentGet(rt.Ctx, "id = ?", hostAgent.ComponentID)
+	if err == nil && component != nil {
+		hostAgent.Component = component
+	}
+
+	ginx.NewRender(c).Data(hostAgent, nil)
+}
+
+// hostAgentAdd 创建HostAgent
+func (rt *Router) hostAgentAdd(c *gin.Context) {
+	var hostAgent models.HostAgent
+	ginx.BindJSON(c, &hostAgent)
+
+	username := c.MustGet("username").(string)
+	hostAgent.CreateBy = username
+	hostAgent.UpdateBy = username
+
+	err := models.HostAgentAdd(rt.Ctx, &hostAgent)
+	ginx.Dangerous(err)
+
+	ginx.NewRender(c).Message("host agent created successfully")
+}
+
+// hostAgentUpdate 更新HostAgent
+func (rt *Router) hostAgentUpdate(c *gin.Context) {
+	id := ginx.UrlParamInt64(c, "id")
+
+	var updates map[string]interface{}
+	ginx.BindJSON(c, &updates)
+
+	username := c.MustGet("username").(string)
+	updates["update_by"] = username
+
+	err := models.HostAgentUpdate(rt.Ctx, id, updates)
+	ginx.Dangerous(err)
+
+	ginx.NewRender(c).Message("host agent updated successfully")
+}
+
+// hostAgentDel 删除HostAgent
+func (rt *Router) hostAgentDel(c *gin.Context) {
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	ginx.BindJSON(c, &req)
+
+	if len(req.IDs) == 0 {
+		ginx.Bomb(http.StatusBadRequest, "ids cannot be empty")
+	}
+
+	err := models.HostAgentDel(rt.Ctx, req.IDs)
+	ginx.Dangerous(err)
+
+	ginx.NewRender(c).Message("host agents deleted successfully")
 }

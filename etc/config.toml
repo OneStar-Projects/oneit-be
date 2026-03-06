@@ -19,7 +19,7 @@ Output = "stdout"
 # http listening address
 Host = "0.0.0.0"
 # http listening port
-Port = 17000
+Port = 17001
 # https cert file path
 CertFile = ""
 # https key file path
@@ -77,11 +77,14 @@ OpenRSA = false
 
 [DB]
 # mysql postgres sqlite
-DBType = "sqlite"
+# DBType = "sqlite"
+DBType = "mysql"
 # postgres: host=%s port=%s user=%s dbname=%s password=%s sslmode=%s
 # postgres: DSN="host=127.0.0.1 port=5432 user=root dbname=n9e_v6 password=1234 sslmode=disable"
-# mysql: DSN="root:1234@tcp(localhost:3306)/n9e_v6?charset=utf8mb4&parseTime=True&loc=Local"
-DSN = "n9e.db"
+# mysql: 
+DSN="root:1234@tcp(localhost:13307)/n9e_v6?charset=utf8mb4&parseTime=True&loc=Local"
+# sqlite
+# DSN = "n9e.db"
 # enable debug mode or not
 Debug = false
 # unit: s
@@ -95,7 +98,7 @@ MaxIdleConns = 50
 
 [Redis]
 # address, ip:port or ip1:port,ip2:port for cluster and sentinel(SentinelAddrs)
-Address = "127.0.0.1:6379"
+Address = "127.0.0.1:16379"
 # Username = ""
 # Password = ""
 # DB = 0

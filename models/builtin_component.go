@@ -21,6 +21,14 @@ type BuiltinComponent struct {
 	CreatedBy string `json:"created_by" gorm:"type:varchar(191);not null;default:'';comment:'creator'"`
 	UpdatedAt int64  `json:"updated_at" gorm:"type:bigint;not null;default:0;comment:'update time'"`
 	UpdatedBy string `json:"updated_by" gorm:"type:varchar(191);not null;default:'';comment:'updater'"`
+
+	// Agent deployment related fields
+	AgentType      string `json:"agent_type" gorm:"type:varchar(50);default:'categraf';comment:'agent type'"`
+	AgentVersion   string `json:"agent_version" gorm:"type:varchar(50);comment:'agent version'"`
+	AgentBinaryURL string `json:"agent_binary_url" gorm:"type:varchar(500);comment:'agent binary file download URL'"`
+	AnsibleScript  string `json:"ansible_script" gorm:"type:text;comment:'ansible deployment script content'"`
+	ConfigTemplate string `json:"config_template" gorm:"type:text;comment:'configuration template'"`
+	ExtraVars      string `json:"extra_vars" gorm:"type:text;comment:'default extra variables in JSON format'"`
 }
 
 type PostgresBuiltinComponent struct {
@@ -33,6 +41,14 @@ type PostgresBuiltinComponent struct {
 	CreatedBy string `json:"created_by" gorm:"type:varchar(191);not null;default:'';comment:'creator'"`
 	UpdatedAt int64  `json:"updated_at" gorm:"type:bigint;not null;default:0;comment:'update time'"`
 	UpdatedBy string `json:"updated_by" gorm:"type:varchar(191);not null;default:'';comment:'updater'"`
+
+	// Agent deployment related fields
+	AgentType      string `json:"agent_type" gorm:"type:varchar(50);default:'categraf';comment:'agent type'"`
+	AgentVersion   string `json:"agent_version" gorm:"type:varchar(50);comment:'agent version'"`
+	AgentBinaryURL string `json:"agent_binary_url" gorm:"type:varchar(500);comment:'agent binary file download URL'"`
+	AnsibleScript  string `json:"ansible_script" gorm:"type:text;comment:'ansible deployment script content'"`
+	ConfigTemplate string `json:"config_template" gorm:"type:text;comment:'configuration template'"`
+	ExtraVars      string `json:"extra_vars" gorm:"type:text;comment:'default extra variables in JSON format'"`
 }
 
 func (bc *PostgresBuiltinComponent) TableName() string {

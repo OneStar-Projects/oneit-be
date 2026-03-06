@@ -1,0 +1,32 @@
+# Main config file for categraf
+# Docs: https://github.com/flashcatcloud/categraf
+
+[global]
+# unique identifier for this agent
+hostname={{ target_ident }}
+
+# interval for collecting metrics
+interval = 15
+
+# timeout for collecting metrics
+timeout = 5
+
+# whether to enable push mode
+push_mode = true
+
+[writer_opt]
+# url for writing metrics
+url = "{{ nserver_write_url }}"
+
+# basic auth username and password
+# basic_auth_user = 
+# basic_auth_pass = 
+
+[reader_opt]
+# url for reading metrics
+url = "{{ nserver_read_url }}"
+
+[global_tags]
+# add global tags for all metrics
+# env = prod
+# region = beijing

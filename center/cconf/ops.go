@@ -96,6 +96,14 @@ ops:
       cname: Host - Delete
     - name: /targets/bind
       cname: Host - Bind Uncategorized
+    - name: /managed-hosts
+      cname: Managed Host - View
+    - name: /managed-hosts/add
+      cname: Managed Host - Add
+    - name: /managed-hosts/put
+      cname: Managed Host - Modify
+    - name: /managed-hosts/del
+      cname: Managed Host - Delete
 
 - name: Explorer
   cname: Explorer

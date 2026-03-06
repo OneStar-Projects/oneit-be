@@ -2227,3 +2227,43 @@ CREATE TABLE `source_token` (
     PRIMARY KEY (`id`),
     KEY `idx_source_type_id_token` (`source_type`, `source_id`, `token`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `agent_versions` (
+    `id` bigint unsigned not null auto_increment,
+    `component_id` bigint not null comment 'builtin component ID',
+    `version` varchar(50) not null comment '版本号，如v1.0.0',
+    `binary_url` varchar(500) comment '二进制文件下载URL',
+    `binary_hash` varchar(64) comment '文件SHA256哈希值',
+    `binary_size` bigint comment '文件大小(字节)',
+    `config_template` text comment '配置模板内容',
+    `ansible_script` text comment 'Ansible部署脚本',
+    `extra_vars` text comment '默认变量JSON格式',
+    `release_notes` text comment '发布说明',
+    `is_active` boolean default true comment '是否为当前活跃版本',
+    `create_at` bigint not null default 0 comment '创建时间',
+    `create_by` varchar(64) not null default '' comment '创建者',
+    PRIMARY KEY (`id`),
+    KEY `idx_component_id` (`component_id`),
+    KEY `idx_is_active` (`is_active`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+
+CREATE TABLE `agent_deployments` (
+    `id` bigint unsigned not null auto_increment,
+    `host_id` bigint not null comment 'managed host ID',
+    `component_id` bigint not null comment 'builtin component ID',
+    `version_id` bigint not null comment 'agent version ID',
+    `status` varchar(20) not null default 'pending' comment '部署状态',
+    `config_data` text comment '实际部署配置JSON',
+    `deployed_at` bigint not null default 0 comment '部署时间',
+    `last_heartbeat` bigint not null default 0 comment '最后心跳时间',
+    `error_message` text comment '错误信息',
+    `create_at` bigint not null default 0 comment '创建时间',
+    `create_by` varchar(64) not null default '' comment '创建者',
+    `update_at` bigint not null default 0 comment '更新时间',
+    `update_by` varchar(64) not null default '' comment '更新者',
+    PRIMARY KEY (`id`),
+    KEY `idx_host_id` (`host_id`),
+    KEY `idx_component_id` (`component_id`),
+    KEY `idx_version_id` (`version_id`),
+    KEY `idx_status` (`status`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;

@@ -1023,3 +1023,71 @@ CREATE TABLE embedded_product (
     update_at bigint NOT NULL DEFAULT 0,
     update_by varchar(64) NOT NULL DEFAULT ''
 );
+
+CREATE TABLE agent_versions (
+    id bigserial,
+    component_id bigint not null,
+    version varchar(50) not null,
+    binary_url varchar(500),
+    binary_hash varchar(64),
+    binary_size bigint,
+    config_template text,
+    ansible_script text,
+    extra_vars text,
+    release_notes text,
+    is_active boolean default true,
+    create_at bigint not null default 0,
+    create_by varchar(64) not null default '',
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_component_id ON agent_versions (component_id);
+CREATE INDEX idx_is_active ON agent_versions (is_active);
+
+COMMENT ON COLUMN agent_versions.component_id IS 'builtin component ID';
+COMMENT ON COLUMN agent_versions.version IS '版本号，如v1.0.0';
+COMMENT ON COLUMN agent_versions.binary_url IS '二进制文件下载URL';
+COMMENT ON COLUMN agent_versions.binary_hash IS '文件SHA256哈希值';
+COMMENT ON COLUMN agent_versions.binary_size IS '文件大小(字节)';
+COMMENT ON COLUMN agent_versions.config_template IS '配置模板内容';
+COMMENT ON COLUMN agent_versions.ansible_script IS 'Ansible部署脚本';
+COMMENT ON COLUMN agent_versions.extra_vars IS '默认变量JSON格式';
+COMMENT ON COLUMN agent_versions.release_notes IS '发布说明';
+COMMENT ON COLUMN agent_versions.is_active IS '是否为当前活跃版本';
+COMMENT ON COLUMN agent_versions.create_at IS '创建时间';
+COMMENT ON COLUMN agent_versions.create_by IS '创建者';
+
+CREATE TABLE agent_deployments (
+    id bigserial,
+    host_id bigint not null,
+    component_id bigint not null,
+    version_id bigint not null,
+    status varchar(20) not null default 'pending',
+    config_data text,
+    deployed_at bigint not null default 0,
+    last_heartbeat bigint not null default 0,
+    error_message text,
+    create_at bigint not null default 0,
+    create_by varchar(64) not null default '',
+    update_at bigint not null default 0,
+    update_by varchar(64) not null default '',
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_host_id ON agent_deployments (host_id);
+CREATE INDEX idx_component_id ON agent_deployments (component_id);
+CREATE INDEX idx_version_id ON agent_deployments (version_id);
+CREATE INDEX idx_status ON agent_deployments (status);
+
+COMMENT ON COLUMN agent_deployments.host_id IS 'managed host ID';
+COMMENT ON COLUMN agent_deployments.component_id IS 'builtin component ID';
+COMMENT ON COLUMN agent_deployments.version_id IS 'agent version ID';
+COMMENT ON COLUMN agent_deployments.status IS '部署状态';
+COMMENT ON COLUMN agent_deployments.config_data IS '实际部署配置JSON';
+COMMENT ON COLUMN agent_deployments.deployed_at IS '部署时间';
+COMMENT ON COLUMN agent_deployments.last_heartbeat IS '最后心跳时间';
+COMMENT ON COLUMN agent_deployments.error_message IS '错误信息';
+COMMENT ON COLUMN agent_deployments.create_at IS '创建时间';
+COMMENT ON COLUMN agent_deployments.create_by IS '创建者';
+COMMENT ON COLUMN agent_deployments.update_at IS '更新时间';
+COMMENT ON COLUMN agent_deployments.update_by IS '更新者';

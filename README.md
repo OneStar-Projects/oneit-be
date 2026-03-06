@@ -95,6 +95,38 @@ Then Nightingale is not suitable. It is recommended that you choose on-call prod
 - For machine-related monitoring data collected by Categraf, it is advisable to use Nightingale's built-in dashboards for viewing. This is because Categraf's metric naming follows Telegraf's convention, which differs from that of Node Exporter.  
 - Due to Nightingale's concept of business groups (where machines can belong to different groups), there may be scenarios where you only want to view machines within the current business group on the dashboard. Thus, Nightingale's dashboards can be linked with business groups for interactive filtering.
 
+## 🖥️ Device Management and Categraf Auto-Deployment
+
+Nightingale now includes enhanced device management capabilities with integrated Categraf agent auto-deployment via Ansible.
+
+### Key Features
+
+- **Managed Hosts**: Extend target management with SSH connection details for remote hosts
+- **Credential Management**: Secure storage of SSH keys and passwords with encryption
+- **SSH Connection Testing**: Validate SSH connectivity before deployment
+- **Ansible Integration**: Automated Categraf deployment using Ansible playbooks
+- **Deployment Tracking**: Monitor deployment status and history
+
+### API Endpoints
+
+- `GET /api/n9e/managed-hosts` - List managed hosts
+- `GET /api/n9e/managed-hosts/:target_ident` - Get managed host details
+- `POST /api/n9e/managed-hosts` - Create managed hosts
+- `PUT /api/n9e/managed-hosts/:target_ident` - Update managed host
+- `DELETE /api/n9e/managed-hosts` - Delete managed hosts
+- `POST /api/n9e/ssh-targets/test-connection` - Test SSH connection
+- `POST /api/n9e/deploy/agents` - Deploy Categraf agents
+- `GET /api/n9e/deploy/status/:task_id` - Get deployment status
+- `GET /api/n9e/deploy/list` - List deployments
+- `POST /api/n9e/deploy/cancel/:task_id` - Cancel deployment
+
+### Deployment Process
+
+1. Add hosts to managed hosts with SSH credentials
+2. Test SSH connection to verify access
+3. Trigger Categraf deployment via Ansible
+4. Monitor deployment status through API
+
 ## 🌟 Stargazers over time
 
 [![Stargazers over time](https://api.star-history.com/svg?repos=ccfos/nightingale&type=Date)](https://star-history.com/#ccfos/nightingale&Date)
